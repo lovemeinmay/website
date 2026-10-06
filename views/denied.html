@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Admins only - {{SITE_NAME}}</title>
+	<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+	<main class="center">
+		<div class="center-box">
+			<h1>Admins only</h1>
+			<p>Your Discord account isn't on the admin list. If you should have access, ask the owner to add your Discord user ID to ADMIN_DISCORD_IDS.</p>
+			<div class="button-row">
+				<a class="btn" href="/dashboard">Go to my license</a>
+				<form action="/logout" method="post">
+					<button class="btn btn-quiet" type="submit">Log out</button>
+				</form>
+			</div>
+		</div>
+	</main>
+</body>
+</html>

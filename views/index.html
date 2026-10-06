@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>{{SITE_NAME}} license</title>
+	<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+	<main class="hero">
+		<div class="rain" id="rain" aria-hidden="true"></div>
+
+		<div class="hero-inner">
+			<h1 class="wordmark">{{SITE_NAME}}</h1>
+			<p class="hero-lede">Redeem your license key, link your Roblox account, and the script lets you in.</p>
+
+			<div class="hero-actions">
+				<a class="btn btn-discord" id="signIn" href="/login?next=/dashboard">Sign in with Discord</a>
+				<a class="btn btn-quiet" id="openLicense" href="/dashboard" hidden>Open my license</a>
+			</div>
+
+			<p class="login-failed" id="loginFailed" hidden>Discord login didn't finish. Try signing in again.</p>
+
+			<ol class="steps">
+				<li>
+					<h3>Redeem your key</h3>
+					<p>Sign in with Discord and paste the key you were given.</p>
+				</li>
+				<li>
+					<h3>Link Roblox</h3>
+					<p>Put a short phrase in your Roblox About section so we know the account is yours.</p>
+				</li>
+				<li>
+					<h3>Run the script</h3>
+					<p>It checks your Roblox account against your license each time it starts.</p>
+				</li>
+			</ol>
+
+			<p class="hero-foot"><a href="/admin">Admin panel</a></p>
+		</div>
+	</main>
+
+	<script src="/assets/landing.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>My license - {{SITE_NAME}}</title>
+	<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+	<header class="topbar">
+		<a class="wordmark-small" href="/">{{SITE_NAME}}<span>.</span></a>
+		<div class="who" id="who"></div>
+	</header>
+
+	<main class="page narrow">
+		<section class="pass" id="pass" data-status="loading" aria-live="polite">
+			<p class="pass-name">{{SITE_NAME}} license</p>
+			<p class="pass-status" id="passStatus">Loading</p>
+			<p class="pass-hint" id="passHint"></p>
+
+			<dl class="pass-grid" id="passGrid" hidden>
+				<div>
+					<dt>Discord</dt>
+					<dd id="passDiscord"></dd>
+				</div>
+				<div>
+					<dt>Roblox</dt>
+					<dd id="passRoblox"></dd>
+				</div>
+				<div>
+					<dt>Expires</dt>
+					<dd id="passExpires"></dd>
+				</div>
+			</dl>
+		</section>
+
+		<section class="panel" id="redeemPanel" hidden>
+			<h2 id="redeemTitle">Redeem a key</h2>
+			<p id="redeemText">Paste the license key you were given.</p>
+
+			<form id="redeemForm" novalidate>
+				<label for="keyInput">License key</label>
+				<div class="field-row">
+					<div class="field">
+						<input id="keyInput" class="input-key" placeholder="{{SITE_NAME}}-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" />
+					</div>
+					<button class="btn" type="submit" id="redeemBtn">Redeem key</button>
+				</div>
+				<p class="form-error" id="redeemError" role="alert"></p>
+			</form>
+		</section>
+
+		<section class="panel" id="linkPanel" hidden>
+			<h2 id="linkTitle">Link your Roblox account</h2>
+
+			<div id="linkStart">
+				<p class="muted" id="linkText" style="margin-bottom: 16px">Enter the Roblox account you'll run the script on.</p>
+				<form id="linkForm" novalidate>
+					<label for="robloxInput">Roblox username</label>
+					<div class="field-row">
+						<div class="field">
+							<input id="robloxInput" placeholder="Your Roblox username" autocomplete="off" spellcheck="false" />
+						</div>
+						<button class="btn" type="submit" id="linkBtn">Continue</button>
+					</div>
+					<p class="form-error" id="linkError" role="alert"></p>
+				</form>
+			</div>
+
+			<p class="muted" id="linkCooldown" hidden></p>
+
+			<div id="linkVerify" hidden>
+				<p class="muted" style="margin-bottom: 8px">
+					To prove <strong id="pendingName"></strong> is yours, add this phrase to its About section:
+				</p>
+
+				<div class="phrase-box">
+					<span class="code" id="phrase"></span>
+					<button class="btn btn-quiet btn-small" type="button" id="copyPhrase">Copy</button>
+				</div>
+
+				<ol class="how-to">
+					<li>On Roblox, open <strong>your profile</strong> and edit the <strong>About</strong> section.</li>
+					<li>Paste the phrase anywhere in it and <strong>save</strong>.</li>
+					<li>Come back here and press <strong>Verify account</strong>. You can remove the phrase afterwards.</li>
+				</ol>
+
+				<div class="button-row">
+					<button class="btn" type="button" id="verifyBtn">Verify account</button>
+					<button class="btn btn-quiet" type="button" id="cancelBtn">Use a different account</button>
+				</div>
+				<p class="form-error" id="verifyError" role="alert"></p>
+			</div>
+		</section>
+	</main>
+
+	<script src="/assets/common.js"></script>
+	<script src="/assets/dashboard.js"></script>
+</body>
+</html>
