@@ -157,6 +157,7 @@ router.get("/api/me", async (ctx) => {
 		isAdmin: isAdmin(user),
 		siteName: config.siteName,
 		license: licenses.forUser(license),
+		scriptKey: license ? await licenses.scriptKeyFor(user.id) : null,
 	};
 });
 
@@ -170,7 +171,7 @@ router.post("/api/redeem", async (ctx) => {
 		discordUsername: user.username,
 	});
 
-	return { license: licenses.forUser(license) };
+	return { license: licenses.forUser(license), scriptKey: await licenses.scriptKeyFor(user.id) };
 });
 
 router.post("/api/roblox/start", async (ctx) => {
@@ -296,6 +297,22 @@ router.get("/api/check", async (ctx) => {
 	}
 
 	return licenses.check(robloxUserId);
+});
+
+// GET /api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123
+//   ->  { "allowed": true, "expiresAt": null }
+//   ->  { "allowed": false, "reason": "wrong_account", "message": "This key is linked to a different Roblox account." }
+// The key is the secret here, so this doesn't need PUBLIC_API_TOKEN
+// (a token written into a script you hand out isn't secret anyway).
+router.get("/api/check-key", async (ctx) => {
+	const robloxUserId = Number(ctx.query.get("robloxUserId"));
+	if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
+		throw new HttpError(400, "robloxUserId must be a Roblox user ID number.");
+	}
+
+	rateLimit(`check-key:${robloxUserId}`, 20, 60 * 1000);
+
+	return licenses.checkKey(ctx.query.get("key"), robloxUserId);
 });
 
 // GET /api/allowlist  ->  [ { "robloxUserId": 123, "robloxUsername": "...", "revoked": false } ]

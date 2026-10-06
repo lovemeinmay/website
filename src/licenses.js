@@ -395,6 +395,82 @@ async function check(robloxUserId) {
 	return { allowed: true, expiresAt: license.expires_at };
 }
 
+// ---------------------------------------------------------------------------
+// Script keys - the key the script asks for when it starts
+// ---------------------------------------------------------------------------
+
+// Why a key was turned down. The script shows `message` to the player.
+const KEY_PROBLEMS = {
+	invalid_key: "That key doesn't exist. Check it for typos.",
+	not_redeemed: "Redeem this key on the website first.",
+	no_license: "This key's license no longer exists. Contact an admin.",
+	revoked: "This license has been revoked. Contact an admin.",
+	expired: "This license has expired. Redeem a new key on the website.",
+	needs_roblox: "Link your Roblox account on the website first.",
+	wrong_account: "This key is linked to a different Roblox account.",
+};
+
+function keyProblem(reason) {
+	return { allowed: false, reason, message: KEY_PROBLEMS[reason] };
+}
+
+// A key works in the script once it's redeemed, and only on the Roblox
+// account linked to that license.
+async function checkKey(key, robloxUserId) {
+	const normalized = normalizeKey(key);
+	if (!normalized) return keyProblem("invalid_key");
+
+	const keyRow = await db.first("SELECT redeemed_by FROM license_keys WHERE key = ?", [normalized]);
+	if (!keyRow) return keyProblem("invalid_key");
+	if (!keyRow.redeemed_by) return keyProblem("not_redeemed");
+
+	const license = await getByDiscord(keyRow.redeemed_by);
+	if (!license) return keyProblem("no_license");
+
+	const status = statusOf(license);
+	if (status !== "active") return keyProblem(status);
+
+	if (Number(license.roblox_user_id) !== Number(robloxUserId)) {
+		return keyProblem("wrong_account");
+	}
+
+	return { allowed: true, expiresAt: license.expires_at };
+}
+
+// The key a user pastes into the script: the newest one they redeemed.
+// Licenses an admin granted directly never had a key, so they get one here
+// the first time they need it.
+async function scriptKeyFor(discordId) {
+	const id = String(discordId);
+
+	const row = await db.first(
+		"SELECT key FROM license_keys WHERE redeemed_by = ? ORDER BY redeemed_at DESC, id DESC LIMIT 1",
+		[id]
+	);
+	if (row) return row.key;
+
+	if (!(await getByDiscord(id))) return null;
+
+	const now = nowIso();
+
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const key = newKey();
+
+		try {
+			await db.run(
+				`INSERT INTO license_keys (key, duration_days, note, created_at, created_by, redeemed_at, redeemed_by)
+				VALUES (?, NULL, ?, ?, NULL, ?, ?)`,
+				[key, "Script key for a license given without a key", now, now, id]
+			);
+			return key;
+		} catch (err) {
+			if (!db.isUniqueError(err)) throw err;
+		}
+	}
+
+	return null;
+}
+
 // Same shape as the old /api/allowlist, so scripts that already read it keep working.
 // "revoked" is true for anyone who isn't currently allowed (revoked or expired).
 async function publicList() {
@@ -443,6 +519,8 @@ module.exports = {
 	resetRoblox,
 	deleteLicense,
 	check,
+	checkKey,
+	scriptKeyFor,
 	publicList,
 	stats,
 };

@@ -15,6 +15,7 @@ Licenses are tied to both accounts: one Discord account per license, one Roblox 
 | `/` | Everyone | Landing page with "Sign in with Discord" |
 | `/dashboard` | Users | Redeem a key, link or change their Roblox account, see when their license ends |
 | `/admin` | You (and co-admins) | Make keys, see and manage every license |
+| `/api/check-key?key=...&robloxUserId=123` | The script's key prompt | Answers `{ "allowed": true }`, or `{ "allowed": false, "message": "..." }` saying what's wrong |
 | `/api/check?robloxUserId=123` | Your Roblox script | Answers `{ "allowed": true }` or `{ "allowed": false }` |
 | `/api/allowlist` | Older scripts | The full list, in the same format as before |
 
@@ -98,6 +99,8 @@ This proves the Roblox account is theirs. They can delete the phrase afterwards.
 
 **Timed keys stack:** redeeming a 30-day key on a license with 10 days left gives 40 days. Redeeming after it expires starts from today.
 
+**Script key:** once a key is redeemed, the dashboard shows it under **Your script key** with a Copy button. The script asks for this key the first time it runs and remembers it after that. A key only works on the Roblox account linked to its license, so a shared key is useless to anyone else. Licenses you give out directly (without a key) get a script key made for them the first time the user opens their dashboard.
+
 **In the admin panel** you can:
 
 - add or remove time, or make a license lifetime
@@ -121,6 +124,18 @@ GET https://YOUR-URL/api/check?robloxUserId=123456
 ```
 
 `expiresAt` is `null` for lifetime licenses. If you set `PUBLIC_API_TOKEN`, send it in an `X-License-Token` header (or add `&token=...` to the URL).
+
+To check a key (this is what the script's key prompt does):
+
+```
+GET https://YOUR-URL/api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123456
+```
+
+```json
+{ "allowed": false, "reason": "wrong_account", "message": "This key is linked to a different Roblox account." }
+```
+
+`reason` is one of `invalid_key`, `not_redeemed`, `no_license`, `revoked`, `expired`, `needs_roblox` or `wrong_account`. This route doesn't need `PUBLIC_API_TOKEN`, because the key itself is the secret.
 
 `/api/allowlist` still returns the old format, so a script that already reads it keeps working:
 

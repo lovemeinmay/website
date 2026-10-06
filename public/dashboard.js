@@ -33,6 +33,18 @@ function render() {
 		}
 	}
 
+	// Script key: what the player pastes into the script.
+	const showKey = !!me.scriptKey && !!license && license.status !== "revoked";
+	$("scriptKeyPanel").hidden = !showKey;
+
+	if (showKey) {
+		$("scriptKey").textContent = me.scriptKey;
+		$("scriptKeyText").textContent =
+			license.status === "needs_roblox"
+				? "Link your Roblox account below, then paste this into the script when it asks for a key."
+				: "Paste this into the script when it asks for a key.";
+	}
+
 	// Redeem panel: for new users, and for timed licenses that can take more time.
 	const canRedeem = !license || (license.status !== "revoked" && license.expiresAt);
 	$("redeemPanel").hidden = !canRedeem;
@@ -101,6 +113,7 @@ $("redeemForm").addEventListener("submit", (event) => {
 		try {
 			const data = await api("POST", "/api/redeem", { key });
 			me.license = data.license;
+			me.scriptKey = data.scriptKey;
 			$("keyInput").value = "";
 			render();
 			toast("Key redeemed");
@@ -133,6 +146,7 @@ $("linkForm").addEventListener("submit", (event) => {
 });
 
 $("copyPhrase").addEventListener("click", () => copyText($("phrase").textContent, $("copyPhrase")));
+$("copyScriptKey").addEventListener("click", () => copyText($("scriptKey").textContent, $("copyScriptKey")));
 
 $("verifyBtn").addEventListener("click", () => {
 	$("verifyError").textContent = "";
