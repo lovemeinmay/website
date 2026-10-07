@@ -10,6 +10,7 @@ const discord = require("./src/discord");
 const roblox = require("./src/roblox");
 const licenses = require("./src/licenses");
 const scripts = require("./src/script");
+const presence = require("./src/presence");
 const { HttpError, createRouter, readJsonBody, sendJson, redirect, sendStatic } = require("./src/http");
 
 const VIEWS = path.join(__dirname, "views");
@@ -253,7 +254,16 @@ router.get("/api/admin/overview", async (ctx) => {
 	requireAdmin(ctx);
 
 	const [stats, licenseList, keys] = await Promise.all([licenses.stats(), licenses.listLicenses(), licenses.listKeys()]);
-	return { stats, licenses: licenseList, keys };
+
+	return {
+		stats: { ...stats, online: presence.onlineCount() },
+		licenses: licenseList.map((license) => ({
+			...license,
+			online: !!license.robloxUserId && presence.isOnline(license.robloxUserId),
+			kickPending: !!license.robloxUserId && presence.hasKick(license.robloxUserId),
+		})),
+		keys,
+	};
 });
 
 router.post("/api/admin/keys", async (ctx) => {
@@ -312,6 +322,23 @@ router.delete("/api/admin/licenses/:id", async (ctx) => {
 	requireAdmin(ctx);
 	await licenses.deleteLicense(ctx.params.id);
 	return { ok: true };
+});
+
+// Kick a player out of the game. Their license isn't touched, so they can rejoin.
+// The kick reaches them the next time their script checks in (every 15 seconds).
+router.post("/api/admin/licenses/:id/kick", async (ctx) => {
+	requireAdmin(ctx);
+
+	const license = await licenses.getForAdmin(ctx.params.id);
+	if (!license.robloxUserId) {
+		throw new HttpError(400, "This license has no Roblox account linked, so there's nobody to kick.");
+	}
+
+	const reason = typeof ctx.body.reason === "string" ? ctx.body.reason.trim().slice(0, 200) : "";
+	const online = presence.isOnline(license.robloxUserId);
+
+	presence.requestKick(license.robloxUserId, reason ? `You were kicked: ${reason}` : "You were kicked by an admin.");
+	return { ok: true, online };
 });
 
 router.get("/api/admin/script", async (ctx) => {
@@ -373,7 +400,19 @@ router.get("/api/check-key", async (ctx) => {
 
 	rateLimit(`check-key:${robloxUserId}`, 20, 60 * 1000);
 
-	return licenses.checkKey(ctx.query.get("key"), robloxUserId);
+	const result = await licenses.checkKey(ctx.query.get("key"), robloxUserId);
+	if (!result.allowed) return result;
+
+	presence.seen(robloxUserId);
+
+	// The running script checks in with watch=1 every 15 seconds. That's when a kick reaches it:
+	//   ->  { "allowed": true, "kick": true, "message": "You were kicked by an admin." }
+	if (ctx.query.get("watch") === "1") {
+		const kick = presence.takeKick(robloxUserId);
+		if (kick) return { ...result, kick: true, message: kick.message };
+	}
+
+	return result;
 });
 
 // GET /api/script?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123
@@ -390,6 +429,8 @@ router.get("/api/script", async (ctx) => {
 
 	const script = await scripts.current();
 	if (!script) throw new HttpError(503, "The script hasn't been uploaded yet. Try again later.");
+
+	presence.seen(robloxUserId);
 
 	// Compress it when the executor says it can unzip (most can), which makes it about 5x smaller.
 	const gzip = /\bgzip\b/.test(String(ctx.req.headers["accept-encoding"] || ""));

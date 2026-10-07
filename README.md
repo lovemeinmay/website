@@ -108,6 +108,8 @@ This proves the Roblox account is theirs. They can delete the phrase afterwards.
 **In the admin panel** you can:
 
 - add or remove time, or make a license lifetime
+- see who's in a game with the script right now (**In game**)
+- **Kick** someone out of their game (you can give a reason they'll see). Their license isn't touched, so they can rejoin
 - revoke a license (blocked, but kept on record) and unrevoke it
 - unlink someone's Roblox account so they can link a new one right away
 - give someone a license directly, without a key
@@ -124,6 +126,9 @@ loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
 1. The loader shows a key box. **Get Key** copies your site's address; **Check Key** checks the key with `/api/check-key`.
 2. With a good key, it downloads the script from `/api/script` and runs it, passing the key in.
 3. It saves the key, so next time it goes straight through.
+4. While the script runs, it checks in every 15 seconds (`/api/check-key` with `watch=1`). If the license has been revoked, deleted, expired or unlinked, or you pressed **Kick**, it turns itself off and kicks the player. If your site can't be reached, it keeps running.
+
+A kick waits up to 2 minutes for the player's script to check in. Who's in a game and waiting kicks are kept in memory, so a restart clears them.
 
 **Uploading the script:** open `/admin`, go to **Script**, choose your `.lua` file and press **Upload**. It replaces the script for everyone straight away, and **Download** gets back what's live. Files up to 15 MB work. The script is sent zipped to executors that can unzip it, which is most of them.
 
