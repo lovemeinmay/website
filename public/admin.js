@@ -21,14 +21,19 @@ async function load() {
 }
 
 function renderSummary() {
-	const { licenses, active, unusedKeys } = data.stats;
+	const { licenses, active, unusedKeys, online } = data.stats;
 	$("summary").innerHTML =
 		licenses === 0 && unusedKeys === 0
 			? "No licenses yet. Make a key below and give it to someone."
-			: `<strong>${active}</strong> of ${licenses} license${licenses === 1 ? "" : "s"} active, and <strong>${unusedKeys}</strong> unused key${
+			: `<strong>${active}</strong> of ${licenses} license${licenses === 1 ? "" : "s"} active, <strong>${unusedKeys}</strong> unused key${
 					unusedKeys === 1 ? "" : "s"
-			  } waiting to be redeemed.`;
+			  } waiting to be redeemed, and <strong>${online || 0}</strong> in a game right now.`;
 }
+
+// Keep "In game" up to date while the Licenses tab is open.
+setInterval(() => {
+	if (!document.hidden && !$("licensesTab").hidden) load().catch(() => {});
+}, 15000);
 
 // ---------------------------------------------------------------------------
 // Tabs
@@ -276,11 +281,21 @@ function renderLicenses() {
 				<tr data-id="${license.id}">
 					<td data-label="Discord">${discord}</td>
 					<td data-label="Roblox">${robloxCell}</td>
-					<td data-label="Status"><span class="pill pill-${license.status}">${STATUS_LABEL[license.status]}</span></td>
+					<td data-label="Status">
+						<span class="pill pill-${license.status}">${STATUS_LABEL[license.status]}</span>
+						${license.online ? '<span class="pill pill-online">In game</span>' : ""}
+					</td>
 					<td data-label="Expires">${expires}</td>
 					<td data-label="Note">${escapeHtml(license.note || "")}</td>
 					<td data-label="">
 						<div class="row-actions">
+							${
+								license.status === "active"
+									? `<button class="btn btn-danger btn-small" data-action="kick"${license.kickPending ? " disabled" : ""}>${
+											license.kickPending ? "Kicking..." : "Kick"
+									  }</button>`
+									: ""
+							}
 							<button class="btn btn-quiet btn-small" data-action="time">Change time</button>
 							<button class="btn btn-quiet btn-small" data-action="toggle" data-revoked="${license.revoked ? 1 : 0}">
 								${license.revoked ? "Unrevoke" : "Revoke"}
@@ -327,6 +342,19 @@ $("licenseRows").addEventListener("click", async (event) => {
 	const license = data.licenses.find((item) => String(item.id) === id);
 
 	try {
+		if (button.dataset.action === "kick") {
+			const name = license.robloxUsername || license.discordUsername || license.discordId;
+			const reason = prompt(`Kick ${name} out of the game? Their license stays as it is.\n\nReason they'll see (optional):`, "");
+			if (reason === null) return;
+
+			const result = await api("POST", `/api/admin/licenses/${id}/kick`, { reason });
+			toast(
+				result.online
+					? `Kicking ${name}. They'll be out within 15 seconds.`
+					: `${name} isn't in a game right now. If they start the script in the next 2 minutes, they'll be kicked.`
+			);
+		}
+
 		if (button.dataset.action === "time") {
 			const answer = prompt(
 				"How many days to add? Use a minus number to take days away, or type lifetime to make it never expire.",

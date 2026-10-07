@@ -362,6 +362,10 @@ async function updateLicense(id, { revoked, addDays: days, lifetime, note }) {
 	return forAdmin(await getById(license.id));
 }
 
+async function getForAdmin(id) {
+	return forAdmin(await requireById(id));
+}
+
 async function resetRoblox(id) {
 	const license = await requireById(id);
 
@@ -516,6 +520,7 @@ module.exports = {
 	listLicenses,
 	grantLicense,
 	updateLicense,
+	getForAdmin,
 	resetRoblox,
 	deleteLicense,
 	check,

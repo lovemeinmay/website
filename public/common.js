@@ -82,7 +82,8 @@ function toast(message, isError = false) {
 	el.classList.add("show");
 
 	clearTimeout(toastTimer);
-	toastTimer = setTimeout(() => el.classList.remove("show"), isError ? 5000 : 2600);
+	// Longer messages stay up longer, so there's time to read them.
+	toastTimer = setTimeout(() => el.classList.remove("show"), Math.max(isError ? 5000 : 2600, message.length * 50));
 }
 
 async function copyText(text, button) {

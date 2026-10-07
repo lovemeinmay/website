@@ -885,6 +885,23 @@ td .code {
 	color: var(--bad);
 }
 
+.pill-online {
+	margin-left: 4px;
+	background: var(--pink-soft);
+	color: var(--pink);
+}
+
+.pill-online::before {
+	content: "";
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-right: 6px;
+	border-radius: 50%;
+	background: var(--pink);
+	vertical-align: 1px;
+}
+
 .pill-used {
 	background: var(--slate-raised);
 	color: var(--muted);
