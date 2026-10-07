@@ -45,10 +45,11 @@ function parseDuration(value) {
 // License status
 // ---------------------------------------------------------------------------
 
+// license.accounts is filled in by withAccounts(): [{ roblox_user_id, roblox_username, linked_at }]
 function statusOf(license, now = nowIso()) {
 	if (license.revoked) return "revoked";
 	if (license.expires_at && license.expires_at <= now) return "expired";
-	if (!license.roblox_user_id) return "needs_roblox";
+	if (!license.accounts || !license.accounts.length) return "needs_roblox";
 	return "active";
 }
 
@@ -56,11 +57,13 @@ function isAllowed(license) {
 	return statusOf(license) === "active";
 }
 
-function relinkAvailableAt(license) {
+// Players can't unlink an account until it's been linked this long, so one license
+// can't be passed around between lots of people. Admins can unlink any time.
+function removableAt(account) {
 	const hours = config.robloxRelinkCooldownHours;
-	if (!license.roblox_user_id || !license.roblox_linked_at || !(hours > 0)) return null;
+	if (!(hours > 0) || !account.linked_at) return null;
 
-	const at = new Date(new Date(license.roblox_linked_at).getTime() + hours * 60 * 60 * 1000).toISOString();
+	const at = new Date(new Date(account.linked_at).getTime() + hours * 60 * 60 * 1000).toISOString();
 	return at > nowIso() ? at : null;
 }
 
@@ -72,11 +75,16 @@ function forUser(license) {
 		status: statusOf(license),
 		expiresAt: license.expires_at,
 		createdAt: license.created_at,
-		roblox: license.roblox_user_id ? { id: license.roblox_user_id, username: license.roblox_username } : null,
+		accounts: license.accounts.map((account) => ({
+			id: account.roblox_user_id,
+			username: account.roblox_username,
+			linkedAt: account.linked_at,
+			removableAt: removableAt(account),
+		})),
+		maxAccounts: config.maxRobloxAccounts,
 		pending: license.pending_roblox_user_id
 			? { id: license.pending_roblox_user_id, username: license.pending_roblox_username, phrase: license.pending_phrase }
 			: null,
-		relinkAvailableAt: relinkAvailableAt(license),
 	};
 }
 
@@ -86,8 +94,7 @@ function forAdmin(license) {
 		id: license.id,
 		discordId: license.discord_id,
 		discordUsername: license.discord_username,
-		robloxUserId: license.roblox_user_id,
-		robloxUsername: license.roblox_username,
+		accounts: license.accounts.map((account) => ({ id: account.roblox_user_id, username: account.roblox_username })),
 		pendingRobloxUsername: license.pending_roblox_username,
 		expiresAt: license.expires_at,
 		revoked: !!license.revoked,
@@ -155,16 +162,40 @@ async function deleteUnusedKey(id) {
 // Licenses
 // ---------------------------------------------------------------------------
 
-function getByDiscord(discordId) {
-	return db.first("SELECT * FROM licenses WHERE discord_id = ?", [String(discordId)]);
+// Fill in license.accounts for one license or a list of them.
+async function withAccounts(licenses) {
+	const list = Array.isArray(licenses) ? licenses : [licenses];
+	const real = list.filter(Boolean);
+	if (!real.length) return licenses;
+
+	const ids = real.map((license) => license.id);
+	const rows = await db.query(
+		`SELECT * FROM roblox_accounts WHERE license_id IN (${ids.map(() => "?").join(", ")}) ORDER BY linked_at, id`,
+		ids
+	);
+
+	for (const license of real) {
+		license.accounts = rows.filter((row) => row.license_id === license.id);
+	}
+
+	return licenses;
 }
 
-function getById(id) {
-	return db.first("SELECT * FROM licenses WHERE id = ?", [Number(id)]);
+async function getByDiscord(discordId) {
+	return withAccounts(await db.first("SELECT * FROM licenses WHERE discord_id = ?", [String(discordId)]));
 }
 
-function getByRoblox(robloxUserId) {
-	return db.first("SELECT * FROM licenses WHERE roblox_user_id = ?", [Number(robloxUserId)]);
+async function getById(id) {
+	return withAccounts(await db.first("SELECT * FROM licenses WHERE id = ?", [Number(id)]));
+}
+
+async function getByRoblox(robloxUserId) {
+	return withAccounts(
+		await db.first(
+			"SELECT l.* FROM licenses l JOIN roblox_accounts a ON a.license_id = l.id WHERE a.roblox_user_id = ?",
+			[Number(robloxUserId)]
+		)
+	);
 }
 
 async function requireById(id) {
@@ -236,13 +267,15 @@ async function startRobloxLink(discordId, robloxUser, phrase) {
 	if (!license) throw new HttpError(400, "Redeem a license key first.");
 	if (license.revoked) throw new HttpError(403, "Your license has been revoked. Contact an admin.");
 
-	if (license.roblox_user_id === robloxUser.id) {
+	if (license.accounts.some((account) => account.roblox_user_id === robloxUser.id)) {
 		throw new HttpError(400, "That Roblox account is already linked to your license.");
 	}
 
-	const waitUntil = relinkAvailableAt(license);
-	if (waitUntil) {
-		throw new HttpError(429, `You can change your Roblox account again after ${new Date(waitUntil).toUTCString()}.`);
+	if (license.accounts.length >= config.maxRobloxAccounts) {
+		throw new HttpError(
+			400,
+			`You've linked ${config.maxRobloxAccounts} accounts, which is the most a license can have. Remove one to add another.`
+		);
 	}
 
 	const owner = await getByRoblox(robloxUser.id);
@@ -263,14 +296,20 @@ async function startRobloxLink(discordId, robloxUser, phrase) {
 }
 
 async function completeRobloxLink(discordId, robloxUser) {
+	const license = await getByDiscord(discordId);
+	if (!license) throw new HttpError(400, "Redeem a license key first.");
+
+	if (license.accounts.length >= config.maxRobloxAccounts) {
+		throw new HttpError(400, `Your license already has ${config.maxRobloxAccounts} accounts. Remove one to add another.`);
+	}
+
 	try {
-		await db.run(
-			`UPDATE licenses
-			SET roblox_user_id = ?, roblox_username = ?, roblox_linked_at = ?,
-				pending_roblox_user_id = NULL, pending_roblox_username = NULL, pending_phrase = NULL
-			WHERE discord_id = ?`,
-			[robloxUser.id, robloxUser.name, nowIso(), String(discordId)]
-		);
+		await db.run("INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)", [
+			license.id,
+			robloxUser.id,
+			robloxUser.name,
+			nowIso(),
+		]);
 	} catch (err) {
 		if (db.isUniqueError(err)) {
 			throw new HttpError(409, "That Roblox account is already linked to someone else's license.");
@@ -278,6 +317,7 @@ async function completeRobloxLink(discordId, robloxUser) {
 		throw err;
 	}
 
+	await cancelRobloxLink(discordId);
 	return getByDiscord(discordId);
 }
 
@@ -288,8 +328,23 @@ async function cancelRobloxLink(discordId) {
 	);
 }
 
+// A player unlinking one of their own accounts.
+async function removeRobloxAccount(discordId, robloxUserId) {
+	const license = await getByDiscord(discordId);
+	const account = license && license.accounts.find((item) => item.roblox_user_id === Number(robloxUserId));
+	if (!account) throw new HttpError(404, "That Roblox account isn't linked to your license.");
+
+	const waitUntil = removableAt(account);
+	if (waitUntil) {
+		throw new HttpError(429, `You can remove ${account.roblox_username} after ${new Date(waitUntil).toUTCString()}.`);
+	}
+
+	await db.run("DELETE FROM roblox_accounts WHERE id = ?", [account.id]);
+	return getByDiscord(discordId);
+}
+
 async function listLicenses() {
-	const rows = await db.query("SELECT * FROM licenses ORDER BY created_at DESC, id DESC");
+	const rows = await withAccounts(await db.query("SELECT * FROM licenses ORDER BY created_at DESC, id DESC"));
 	return rows.map(forAdmin);
 }
 
@@ -306,21 +361,30 @@ async function grantLicense({ discordId, discordUsername, robloxUser, duration, 
 	const durationDays = parseDuration(duration);
 	const now = nowIso();
 
-	try {
-		await db.run(
-			`INSERT INTO licenses (discord_id, discord_username, roblox_user_id, roblox_username, roblox_linked_at, expires_at, note, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
+	const statements = [
+		{
+			sql: `INSERT INTO licenses (discord_id, discord_username, expires_at, note, created_at) VALUES (?, ?, ?, ?, ?)`,
+			args: [
 				id,
 				discordUsername ? String(discordUsername).slice(0, 64) : null,
-				robloxUser ? robloxUser.id : null,
-				robloxUser ? robloxUser.name : null,
-				robloxUser ? now : null,
 				durationDays ? addDays(now, durationDays) : null,
 				note ? String(note).slice(0, 200) : null,
 				now,
-			]
-		);
+			],
+		},
+	];
+
+	if (robloxUser) {
+		statements.push({
+			sql: `INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at)
+				VALUES ((SELECT id FROM licenses WHERE discord_id = ?), ?, ?, ?)`,
+			args: [id, robloxUser.id, robloxUser.name, now],
+		});
+	}
+
+	// Both or neither: no license is left behind if the Roblox account is taken.
+	try {
+		await db.batch(statements);
 	} catch (err) {
 		if (db.isUniqueError(err)) {
 			throw new HttpError(409, "That Roblox account is already linked to another license.");
@@ -366,23 +430,40 @@ async function getForAdmin(id) {
 	return forAdmin(await requireById(id));
 }
 
+// Unlink every Roblox account from a license (admin).
 async function resetRoblox(id) {
 	const license = await requireById(id);
 
-	await db.run(
-		`UPDATE licenses
-		SET roblox_user_id = NULL, roblox_username = NULL, roblox_linked_at = NULL,
-			pending_roblox_user_id = NULL, pending_roblox_username = NULL, pending_phrase = NULL
-		WHERE id = ?`,
-		[license.id]
-	);
+	await db.batch([
+		{ sql: "DELETE FROM roblox_accounts WHERE license_id = ?", args: [license.id] },
+		{
+			sql: "UPDATE licenses SET pending_roblox_user_id = NULL, pending_roblox_username = NULL, pending_phrase = NULL WHERE id = ?",
+			args: [license.id],
+		},
+	]);
 
+	return forAdmin(await getById(license.id));
+}
+
+// Unlink one Roblox account from a license (admin, no waiting).
+async function unlinkAccount(id, robloxUserId) {
+	const license = await requireById(id);
+	const result = await db.run("DELETE FROM roblox_accounts WHERE license_id = ? AND roblox_user_id = ?", [
+		license.id,
+		Number(robloxUserId),
+	]);
+
+	if (!result.changes) throw new HttpError(404, "That Roblox account isn't linked to this license.");
 	return forAdmin(await getById(license.id));
 }
 
 async function deleteLicense(id) {
 	const license = await requireById(id);
-	await db.run("DELETE FROM licenses WHERE id = ?", [license.id]);
+
+	await db.batch([
+		{ sql: "DELETE FROM roblox_accounts WHERE license_id = ?", args: [license.id] },
+		{ sql: "DELETE FROM licenses WHERE id = ?", args: [license.id] },
+	]);
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +492,7 @@ const KEY_PROBLEMS = {
 	revoked: "This license has been revoked. Contact an admin.",
 	expired: "This license has expired. Redeem a new key on the website.",
 	needs_roblox: "Link your Roblox account on the website first.",
-	wrong_account: "This key is linked to a different Roblox account.",
+	wrong_account: "This Roblox account isn't linked to your license. Add it on the website.",
 };
 
 function keyProblem(reason) {
@@ -420,25 +501,31 @@ function keyProblem(reason) {
 
 // A key works in the script once it's redeemed, and only on the Roblox
 // account linked to that license.
-async function checkKey(key, robloxUserId) {
+// Check a key for a Roblox account. Gives back what the script sees (`result`), plus the
+// license and account it matched, for the site's own use (logging, kicks).
+async function verifyKey(key, robloxUserId) {
 	const normalized = normalizeKey(key);
-	if (!normalized) return keyProblem("invalid_key");
+	if (!normalized) return { result: keyProblem("invalid_key") };
 
 	const keyRow = await db.first("SELECT redeemed_by FROM license_keys WHERE key = ?", [normalized]);
-	if (!keyRow) return keyProblem("invalid_key");
-	if (!keyRow.redeemed_by) return keyProblem("not_redeemed");
+	if (!keyRow) return { result: keyProblem("invalid_key") };
+	if (!keyRow.redeemed_by) return { result: keyProblem("not_redeemed") };
 
 	const license = await getByDiscord(keyRow.redeemed_by);
-	if (!license) return keyProblem("no_license");
+	if (!license) return { result: keyProblem("no_license") };
 
 	const status = statusOf(license);
-	if (status !== "active") return keyProblem(status);
+	if (status !== "active") return { result: keyProblem(status), license };
 
-	if (Number(license.roblox_user_id) !== Number(robloxUserId)) {
-		return keyProblem("wrong_account");
-	}
+	const account = license.accounts.find((item) => item.roblox_user_id === Number(robloxUserId));
+	if (!account) return { result: keyProblem("wrong_account"), license };
 
-	return { allowed: true, expiresAt: license.expires_at };
+	return { result: { allowed: true, expiresAt: license.expires_at }, license, account };
+}
+
+// A key works in the script once it's redeemed, and only on Roblox accounts linked to that license.
+async function checkKey(key, robloxUserId) {
+	return (await verifyKey(key, robloxUserId)).result;
 }
 
 // The key a user pastes into the script: the newest one they redeemed.
@@ -478,12 +565,54 @@ async function scriptKeyFor(discordId) {
 // Same shape as the old /api/allowlist, so scripts that already read it keep working.
 // "revoked" is true for anyone who isn't currently allowed (revoked or expired).
 async function publicList() {
-	const rows = await db.query("SELECT * FROM licenses WHERE roblox_user_id IS NOT NULL");
+	const rows = await withAccounts(await db.query("SELECT * FROM licenses"));
 
-	return rows.map((license) => ({
-		robloxUserId: license.roblox_user_id,
-		robloxUsername: license.roblox_username,
-		revoked: !isAllowed(license),
+	return rows.flatMap((license) =>
+		license.accounts.map((account) => ({
+			robloxUserId: account.roblox_user_id,
+			robloxUsername: account.roblox_username,
+			revoked: !isAllowed(license),
+		}))
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Executions - every time the script starts, and in which game
+// ---------------------------------------------------------------------------
+
+const KEEP_EXECUTIONS_DAYS = 90;
+
+async function logExecution({ license, account, placeId, gameName, jobId }) {
+	const now = nowIso();
+
+	await db.run(
+		`INSERT INTO executions (license_id, discord_username, roblox_user_id, roblox_username, place_id, game_name, job_id, executed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		[license.id, license.discord_username, account.roblox_user_id, account.roblox_username, placeId, gameName, jobId, now]
+	);
+
+	// Now and then, clear out old history so the table doesn't grow forever.
+	if (crypto.randomInt(50) === 0) {
+		await db.run("DELETE FROM executions WHERE executed_at < ?", [addDays(now, -KEEP_EXECUTIONS_DAYS)]);
+	}
+}
+
+async function listExecutions({ licenseId, limit } = {}) {
+	const count = Math.min(Math.max(Number(limit) || 200, 1), 1000);
+	const rows = licenseId
+		? await db.query("SELECT * FROM executions WHERE license_id = ? ORDER BY id DESC LIMIT ?", [Number(licenseId), count])
+		: await db.query("SELECT * FROM executions ORDER BY id DESC LIMIT ?", [count]);
+
+	return rows.map((row) => ({
+		id: row.id,
+		licenseId: row.license_id,
+		discordUsername: row.discord_username,
+		robloxUserId: row.roblox_user_id,
+		robloxUsername: row.roblox_username,
+		placeId: row.place_id,
+		gameName: row.game_name,
+		jobId: row.job_id,
+		executedAt: row.executed_at,
 	}));
 }
 
@@ -493,7 +622,8 @@ async function stats() {
 		db.first(
 			`SELECT
 				COUNT(*) AS total,
-				SUM(CASE WHEN revoked = 0 AND roblox_user_id IS NOT NULL AND (expires_at IS NULL OR expires_at > ?) THEN 1 ELSE 0 END) AS active
+				SUM(CASE WHEN revoked = 0 AND (expires_at IS NULL OR expires_at > ?)
+					AND EXISTS (SELECT 1 FROM roblox_accounts a WHERE a.license_id = licenses.id) THEN 1 ELSE 0 END) AS active
 			FROM licenses`,
 			[now]
 		),
@@ -525,6 +655,11 @@ module.exports = {
 	deleteLicense,
 	check,
 	checkKey,
+	verifyKey,
+	removeRobloxAccount,
+	unlinkAccount,
+	logExecution,
+	listExecutions,
 	scriptKeyFor,
 	publicList,
 	stats,

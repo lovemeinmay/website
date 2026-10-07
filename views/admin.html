@@ -19,6 +19,7 @@
 		<div class="tabs" role="tablist">
 			<button class="tab" role="tab" id="tabKeys" aria-selected="true" aria-controls="keysTab">Keys</button>
 			<button class="tab" role="tab" id="tabLicenses" aria-selected="false" aria-controls="licensesTab">Licenses</button>
+			<button class="tab" role="tab" id="tabActivity" aria-selected="false" aria-controls="activityTab">Activity</button>
 			<button class="tab" role="tab" id="tabScript" aria-selected="false" aria-controls="scriptTab">Script</button>
 		</div>
 
@@ -137,6 +138,34 @@
 						</tr>
 					</thead>
 					<tbody id="licenseRows"></tbody>
+				</table>
+			</div>
+		</section>
+
+		<!-- Activity -->
+		<section id="activityTab" role="tabpanel" aria-labelledby="tabActivity" hidden>
+			<div class="toolbar">
+				<h2>Script runs</h2>
+				<input id="activitySearch" type="search" placeholder="Search players and games" aria-label="Search script runs" />
+			</div>
+			<p class="muted script-help" id="activityHelp">Every time someone starts the script, newest first. Kept for 90 days.</p>
+			<p class="filter-note" id="activityFilter" hidden>
+				<span id="activityFilterText"></span>
+				<button class="btn btn-quiet btn-small" type="button" id="activityShowAll">Show everyone</button>
+			</p>
+
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>When</th>
+							<th>Discord</th>
+							<th>Roblox account</th>
+							<th>Game</th>
+							<th>Server</th>
+						</tr>
+					</thead>
+					<tbody id="activityRows"></tbody>
 				</table>
 			</div>
 		</section>

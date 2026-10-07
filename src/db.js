@@ -67,6 +67,7 @@ async function init() {
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				discord_id TEXT NOT NULL UNIQUE,
 				discord_username TEXT,
+				-- No longer used: Roblox accounts are in roblox_accounts now.
 				roblox_user_id INTEGER UNIQUE,
 				roblox_username TEXT,
 				roblox_linked_at TEXT,
@@ -78,6 +79,52 @@ async function init() {
 				note TEXT,
 				created_at TEXT NOT NULL
 			)`,
+			args: [],
+		},
+		{
+			// Roblox accounts linked to a license (a license can have several).
+			sql: `CREATE TABLE IF NOT EXISTS roblox_accounts (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				license_id INTEGER NOT NULL,
+				roblox_user_id INTEGER NOT NULL UNIQUE,
+				roblox_username TEXT,
+				linked_at TEXT NOT NULL
+			)`,
+			args: [],
+		},
+		{
+			sql: "CREATE INDEX IF NOT EXISTS roblox_accounts_by_license ON roblox_accounts (license_id)",
+			args: [],
+		},
+		{
+			// Licenses used to hold one Roblox account in their own columns. Move any still
+			// there into roblox_accounts. After the first run there's nothing left to move.
+			sql: `INSERT OR IGNORE INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at)
+				SELECT id, roblox_user_id, roblox_username, COALESCE(roblox_linked_at, created_at)
+				FROM licenses WHERE roblox_user_id IS NOT NULL`,
+			args: [],
+		},
+		{
+			sql: "UPDATE licenses SET roblox_user_id = NULL, roblox_username = NULL, roblox_linked_at = NULL WHERE roblox_user_id IS NOT NULL",
+			args: [],
+		},
+		{
+			// Every time the script starts: who, on which account, in which game and server.
+			sql: `CREATE TABLE IF NOT EXISTS executions (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				license_id INTEGER,
+				discord_username TEXT,
+				roblox_user_id INTEGER NOT NULL,
+				roblox_username TEXT,
+				place_id INTEGER,
+				game_name TEXT,
+				job_id TEXT,
+				executed_at TEXT NOT NULL
+			)`,
+			args: [],
+		},
+		{
+			sql: "CREATE INDEX IF NOT EXISTS executions_by_time ON executions (executed_at)",
 			args: [],
 		},
 		{

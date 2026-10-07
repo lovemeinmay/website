@@ -32,7 +32,9 @@ function renderSummary() {
 
 // Keep "In game" up to date while the Licenses tab is open.
 setInterval(() => {
-	if (!document.hidden && !$("licensesTab").hidden) load().catch(() => {});
+	if (document.hidden) return;
+	if (!$("licensesTab").hidden) load().catch(() => {});
+	if (!$("activityTab").hidden) loadActivity().catch(() => {});
 }, 15000);
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,7 @@ setInterval(() => {
 const TABS = {
 	keys: ["tabKeys", "keysTab"],
 	licenses: ["tabLicenses", "licensesTab"],
+	activity: ["tabActivity", "activityTab"],
 	script: ["tabScript", "scriptTab"],
 };
 
@@ -50,6 +53,8 @@ function showTab(name) {
 		$(button).setAttribute("aria-selected", String(tab === name));
 		$(panel).hidden = tab !== name;
 	}
+
+	if (name === "activity") loadActivity().catch((err) => toast(err.message, true));
 
 	if (name === "script") {
 		loadScript().catch((err) => {
@@ -61,7 +66,89 @@ function showTab(name) {
 
 $("tabKeys").addEventListener("click", () => showTab("keys"));
 $("tabLicenses").addEventListener("click", () => showTab("licenses"));
+$("tabActivity").addEventListener("click", () => {
+	activityLicense = null;
+	showTab("activity");
+});
 $("tabScript").addEventListener("click", () => showTab("script"));
+
+// ---------------------------------------------------------------------------
+// Activity
+// ---------------------------------------------------------------------------
+
+let executions = [];
+let activityLicense = null; // { id, name } when showing one license's runs
+
+// "just now", "4 min ago", "3 hours ago", "2 days ago"
+function timeAgo(iso) {
+	const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes} min ago`;
+
+	const hours = Math.floor(minutes / 60);
+	if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+	return `${Math.floor(hours / 24)} days ago`;
+}
+
+function gameLink(placeId, gameName) {
+	const name = escapeHtml(gameName || (placeId ? `Place ${placeId}` : "Unknown game"));
+	return placeId
+		? `<a href="https://www.roblox.com/games/${encodeURIComponent(placeId)}" target="_blank" rel="noopener">${name}</a>`
+		: name;
+}
+
+function renderActivity() {
+	const search = $("activitySearch").value.trim().toLowerCase();
+
+	$("activityFilter").hidden = !activityLicense;
+	if (activityLicense) $("activityFilterText").textContent = `Showing ${activityLicense.name}'s runs only.`;
+
+	const rows = executions.filter(
+		(run) =>
+			!search ||
+			[run.discordUsername, run.robloxUsername, run.robloxUserId, run.gameName, run.placeId, run.jobId]
+				.join(" ")
+				.toLowerCase()
+				.includes(search)
+	);
+
+	if (!rows.length) {
+		$("activityRows").innerHTML = `<tr><td colspan="5" class="empty">${
+			executions.length ? "No runs match." : "Nobody has run the script yet. Runs show up here as soon as someone starts it."
+		}</td></tr>`;
+		return;
+	}
+
+	$("activityRows").innerHTML = rows
+		.map(
+			(run) => `
+			<tr>
+				<td data-label="When">${escapeHtml(formatDate(run.executedAt))}<span class="sub">${escapeHtml(timeAgo(run.executedAt))}</span></td>
+				<td data-label="Discord">${escapeHtml(run.discordUsername || "Unknown")}</td>
+				<td data-label="Roblox">${escapeHtml(run.robloxUsername || "")}<span class="sub code">${escapeHtml(run.robloxUserId)}</span></td>
+				<td data-label="Game">${gameLink(run.placeId, run.gameName)}${
+					run.placeId ? `<span class="sub code">${escapeHtml(run.placeId)}</span>` : ""
+				}</td>
+				<td data-label="Server">${
+					run.jobId ? `<span class="code" title="${escapeHtml(run.jobId)}">${escapeHtml(run.jobId.slice(0, 8))}</span>` : '<span class="muted">-</span>'
+				}</td>
+			</tr>`
+		)
+		.join("");
+}
+
+async function loadActivity() {
+	const query = activityLicense ? `?licenseId=${encodeURIComponent(activityLicense.id)}` : "";
+	executions = (await api("GET", `/api/admin/activity${query}`)).executions;
+	renderActivity();
+}
+
+$("activitySearch").addEventListener("input", renderActivity);
+$("activityShowAll").addEventListener("click", () => {
+	activityLicense = null;
+	loadActivity().catch((err) => toast(err.message, true));
+});
 
 // ---------------------------------------------------------------------------
 // Script
@@ -249,7 +336,12 @@ function renderLicenses() {
 
 	const rows = data.licenses.filter((license) => {
 		if (!search) return true;
-		return [license.discordUsername, license.discordId, license.robloxUsername, license.robloxUserId, license.note]
+		return [
+			license.discordUsername,
+			license.discordId,
+			license.note,
+			...license.accounts.flatMap((account) => [account.username, account.id, account.game && account.game.gameName]),
+		]
 			.join(" ")
 			.toLowerCase()
 			.includes(search);
@@ -266,12 +358,33 @@ function renderLicenses() {
 		.map((license) => {
 			const discord = `${escapeHtml(license.discordUsername || "Unknown")}<span class="sub code">${escapeHtml(license.discordId)}</span>`;
 
-			let robloxCell = '<span class="muted">Not linked</span>';
-			if (license.robloxUserId) {
-				robloxCell = `${escapeHtml(license.robloxUsername || "")}<span class="sub code">${escapeHtml(license.robloxUserId)}</span>`;
-			} else if (license.pendingRobloxUsername) {
-				robloxCell = `<span class="muted">Verifying ${escapeHtml(license.pendingRobloxUsername)}</span>`;
+			let robloxCell = license.accounts
+				.map(
+					(account) => `
+					<div class="account-cell">
+						<div class="account-name">
+							${escapeHtml(account.username || "")}
+							<button class="unlink" type="button" data-action="unlink" data-roblox="${account.id}" data-name="${escapeHtml(
+								account.username || account.id
+							)}" title="Unlink this account" aria-label="Unlink ${escapeHtml(account.username || account.id)}">&times;</button>
+						</div>
+						<span class="sub code">${escapeHtml(account.id)}</span>
+						${
+							account.online
+								? `<span class="in-game"><span class="pill pill-online">In game</span> ${
+										account.game ? gameLink(account.game.placeId, account.game.gameName) : ""
+								  }</span>`
+								: ""
+						}
+					</div>`
+				)
+				.join("");
+
+			if (license.pendingRobloxUsername) {
+				robloxCell += `<span class="muted sub">Verifying ${escapeHtml(license.pendingRobloxUsername)}</span>`;
 			}
+
+			if (!robloxCell) robloxCell = '<span class="muted">Not linked</span>';
 
 			const expires = license.expiresAt
 				? `${escapeHtml(formatDay(license.expiresAt))}<span class="sub">${escapeHtml(fromNow(license.expiresAt))}</span>`
@@ -281,10 +394,7 @@ function renderLicenses() {
 				<tr data-id="${license.id}">
 					<td data-label="Discord">${discord}</td>
 					<td data-label="Roblox">${robloxCell}</td>
-					<td data-label="Status">
-						<span class="pill pill-${license.status}">${STATUS_LABEL[license.status]}</span>
-						${license.online ? '<span class="pill pill-online">In game</span>' : ""}
-					</td>
+					<td data-label="Status"><span class="pill pill-${license.status}">${STATUS_LABEL[license.status]}</span></td>
 					<td data-label="Expires">${expires}</td>
 					<td data-label="Note">${escapeHtml(license.note || "")}</td>
 					<td data-label="">
@@ -296,11 +406,16 @@ function renderLicenses() {
 									  }</button>`
 									: ""
 							}
+							<button class="btn btn-quiet btn-small" data-action="activity">Activity</button>
 							<button class="btn btn-quiet btn-small" data-action="time">Change time</button>
 							<button class="btn btn-quiet btn-small" data-action="toggle" data-revoked="${license.revoked ? 1 : 0}">
 								${license.revoked ? "Unrevoke" : "Revoke"}
 							</button>
-							${license.robloxUserId || license.pendingRobloxUsername ? '<button class="btn btn-quiet btn-small" data-action="reset">Reset Roblox</button>' : ""}
+							${
+								license.accounts.length > 1 || license.pendingRobloxUsername
+									? '<button class="btn btn-quiet btn-small" data-action="reset">Unlink all</button>'
+									: ""
+							}
 							<button class="btn btn-danger btn-small" data-action="delete">Delete</button>
 						</div>
 					</td>
@@ -342,15 +457,27 @@ $("licenseRows").addEventListener("click", async (event) => {
 	const license = data.licenses.find((item) => String(item.id) === id);
 
 	try {
+		if (button.dataset.action === "activity") {
+			activityLicense = { id: license.id, name: license.discordUsername || license.discordId };
+			showTab("activity");
+			return;
+		}
+
+		if (button.dataset.action === "unlink") {
+			if (!confirm(`Unlink ${button.dataset.name} from this license? The script stops working on it straight away.`)) return;
+			await api("DELETE", `/api/admin/licenses/${id}/roblox/${button.dataset.roblox}`);
+			toast("Account unlinked");
+		}
+
 		if (button.dataset.action === "kick") {
-			const name = license.robloxUsername || license.discordUsername || license.discordId;
+			const name = license.discordUsername || license.discordId;
 			const reason = prompt(`Kick ${name} out of the game? Their license stays as it is.\n\nReason they'll see (optional):`, "");
 			if (reason === null) return;
 
 			const result = await api("POST", `/api/admin/licenses/${id}/kick`, { reason });
 			toast(
-				result.online
-					? `Kicking ${name}. They'll be out within 15 seconds.`
+				result.online.length
+					? `Kicking ${result.online.join(", ")}. They'll be out within 15 seconds.`
 					: `${name} isn't in a game right now. If they start the script in the next 2 minutes, they'll be kicked.`
 			);
 		}
@@ -386,9 +513,9 @@ $("licenseRows").addEventListener("click", async (event) => {
 		}
 
 		if (button.dataset.action === "reset") {
-			if (!confirm("Unlink this Roblox account? They'll need to link one again before the script lets them in.")) return;
+			if (!confirm("Unlink all of this license's Roblox accounts? They'll need to link one again before the script lets them in.")) return;
 			await api("POST", `/api/admin/licenses/${id}/reset-roblox`);
-			toast("Roblox account unlinked");
+			toast("Roblox accounts unlinked");
 		}
 
 		if (button.dataset.action === "delete") {

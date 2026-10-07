@@ -5,23 +5,42 @@
 const ONLINE_MS = 60 * 1000; // checked in this recently = in a game now
 const KICK_WAIT_MS = 2 * 60 * 1000; // how long a kick waits for their script to check in
 
-const lastSeen = new Map(); // robloxUserId -> time of last check-in
+const lastSeen = new Map(); // robloxUserId -> { time, placeId, gameName } from the last check-in
 const kicks = new Map(); // robloxUserId -> { until, message }
 
 function prune() {
 	const now = Date.now();
-	for (const [id, time] of lastSeen) if (now - time >= ONLINE_MS) lastSeen.delete(id);
+	for (const [id, seen] of lastSeen) if (now - seen.time >= ONLINE_MS) lastSeen.delete(id);
 	for (const [id, kick] of kicks) if (kick.until <= now) kicks.delete(id);
 }
 
-function seen(robloxUserId) {
-	lastSeen.set(Number(robloxUserId), Date.now());
+// game: { placeId, gameName } if the script sent it. Keeps the last known game otherwise.
+function seen(robloxUserId, game = {}) {
+	const id = Number(robloxUserId);
+	const before = lastSeen.get(id) || {};
+
+	// A check-in that names a place replaces the game; one that doesn't keeps the last one.
+	const current = game.placeId ? game : before;
+
+	lastSeen.set(id, {
+		time: Date.now(),
+		placeId: current.placeId || null,
+		gameName: current.gameName || null,
+	});
+
 	if (lastSeen.size > 10000) prune();
 }
 
 function isOnline(robloxUserId) {
-	const time = lastSeen.get(Number(robloxUserId));
-	return !!time && Date.now() - time < ONLINE_MS;
+	const seen = lastSeen.get(Number(robloxUserId));
+	return !!seen && Date.now() - seen.time < ONLINE_MS;
+}
+
+// The game they're in right now ({ placeId, gameName }), or null if they're not in one.
+function currentGame(robloxUserId) {
+	if (!isOnline(robloxUserId)) return null;
+	const { placeId, gameName } = lastSeen.get(Number(robloxUserId));
+	return placeId ? { placeId, gameName } : null;
 }
 
 function onlineCount() {
@@ -51,4 +70,4 @@ function takeKick(robloxUserId) {
 	return kick;
 }
 
-module.exports = { seen, isOnline, onlineCount, requestKick, hasKick, takeKick, KICK_WAIT_MS };
+module.exports = { seen, isOnline, currentGame, onlineCount, requestKick, hasKick, takeKick, KICK_WAIT_MS };

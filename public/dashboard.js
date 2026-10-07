@@ -2,8 +2,8 @@ const $ = (id) => document.getElementById(id);
 
 const STATUS_TEXT = {
 	none: ["No license yet", "Redeem a key below to get started."],
-	needs_roblox: ["Almost there", "Link your Roblox account so the script knows it's you."],
-	active: ["Active", "The script will let your Roblox account in."],
+	needs_roblox: ["Almost there", "Link a Roblox account so the script knows it's you."],
+	active: ["Active", "The script works on the Roblox accounts linked below."],
 	expired: ["Expired", "Your time ran out. Redeem a new key to add more."],
 	revoked: ["Revoked", "An admin revoked this license. Contact them if you think it's a mistake."],
 };
@@ -23,7 +23,9 @@ function render() {
 	$("passGrid").hidden = !license;
 	if (license) {
 		$("passDiscord").textContent = me.user.username;
-		$("passRoblox").textContent = license.roblox ? license.roblox.username : "Not linked";
+		$("passRoblox").textContent = license.accounts.length
+			? license.accounts.map((account) => account.username).join(", ")
+			: "Not linked";
 
 		if (!license.expiresAt) {
 			$("passExpires").textContent = "Never (lifetime)";
@@ -64,23 +66,42 @@ function render() {
 	if (!showLink) return;
 
 	const pending = license.pending;
+	const accounts = license.accounts;
+	const full = accounts.length >= license.maxAccounts;
+
 	$("linkVerify").hidden = !pending;
-	$("linkStart").hidden = !!pending || !!license.relinkAvailableAt;
-	$("linkCooldown").hidden = !!pending || !license.relinkAvailableAt;
+	$("linkStart").hidden = !!pending || full;
+	$("linkFull").hidden = !!pending || !full;
 
-	if (license.roblox) {
-		$("linkTitle").textContent = "Change Roblox account";
-		$("linkText").textContent = `Linked to ${license.roblox.username}. To use a different account, enter it below.`;
-	} else {
-		$("linkTitle").textContent = "Link your Roblox account";
-		$("linkText").textContent = "Enter the Roblox account you'll run the script on.";
-	}
+	$("linkTitle").textContent = accounts.length
+		? `Your Roblox accounts (${accounts.length} of ${license.maxAccounts})`
+		: "Link your Roblox account";
 
-	if (license.relinkAvailableAt) {
-		$("linkCooldown").textContent = `Linked to ${license.roblox.username}. You can switch to a different account on ${formatDate(
-			license.relinkAvailableAt
-		)}.`;
-	}
+	$("linkText").textContent = accounts.length
+		? `You can link up to ${license.maxAccounts} accounts, and the script works on all of them. Add another below.`
+		: "Enter the Roblox account you'll run the script on. You can add more later.";
+
+	$("linkFull").textContent = "That's the most accounts a license can have. Remove one to add another.";
+
+	$("accountList").hidden = !accounts.length;
+	$("accountList").innerHTML = accounts
+		.map(
+			(account) => `
+			<li>
+				<div>
+					<strong>${escapeHtml(account.username)}</strong>
+					<span class="sub">Linked ${escapeHtml(formatDay(account.linkedAt))}</span>
+				</div>
+				${
+					account.removableAt
+						? `<span class="muted small">Can remove on ${escapeHtml(formatDay(account.removableAt))}</span>`
+						: `<button class="btn btn-quiet btn-small" type="button" data-remove="${account.id}" data-name="${escapeHtml(
+								account.username
+						  )}">Remove</button>`
+				}
+			</li>`
+		)
+		.join("");
 
 	if (pending) {
 		$("pendingName").textContent = pending.username;
@@ -161,6 +182,24 @@ $("verifyBtn").addEventListener("click", () => {
 			toast("Roblox account linked");
 		} catch (err) {
 			$("verifyError").textContent = err.message;
+		}
+	});
+});
+
+$("accountList").addEventListener("click", (event) => {
+	const button = event.target.closest("button[data-remove]");
+	if (!button) return;
+
+	if (!confirm(`Remove ${button.dataset.name}? The script won't work on it until you link it again.`)) return;
+
+	busy(button, async () => {
+		try {
+			const data = await api("POST", "/api/roblox/remove", { robloxUserId: Number(button.dataset.remove) });
+			me.license = data.license;
+			render();
+			toast("Account removed");
+		} catch (err) {
+			toast(err.message, true);
 		}
 	});
 });
