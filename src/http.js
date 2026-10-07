@@ -60,7 +60,7 @@ function createRouter() {
 
 const MAX_BODY_BYTES = 16 * 1024;
 
-function readJsonBody(req) {
+function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
 	return new Promise((resolve, reject) => {
 		let size = 0;
 		let tooLarge = false;
@@ -71,7 +71,7 @@ function readJsonBody(req) {
 
 			size += chunk.length;
 
-			if (size > MAX_BODY_BYTES) {
+			if (size > maxBytes) {
 				tooLarge = true;
 				chunks.length = 0;
 				reject(new HttpError(413, "Request body is too large."));

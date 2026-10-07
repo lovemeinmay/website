@@ -4,7 +4,8 @@ A website that controls who can use your Roblox script.
 
 - **You** make license keys in the admin panel and hand them out.
 - **Users** sign in with Discord, redeem a key, and verify their Roblox account by putting a short phrase in their Roblox profile.
-- **Your Roblox script** asks the site whether a player's Roblox account has an active license.
+- **Players** run a one-line loader. It asks for their key, and the site only sends them the real script if the key works on their Roblox account.
+- **You** upload the script in the admin panel. It's kept in your database, never in this (public) repo.
 
 Licenses are tied to both accounts: one Discord account per license, one Roblox account per license.
 
@@ -14,7 +15,9 @@ Licenses are tied to both accounts: one Discord account per license, one Roblox 
 |---|---|---|
 | `/` | Everyone | Landing page with "Sign in with Discord" |
 | `/dashboard` | Users | Redeem a key, link or change their Roblox account, see when their license ends |
-| `/admin` | You (and co-admins) | Make keys, see and manage every license |
+| `/admin` | You (and co-admins) | Make keys, manage every license, upload the script |
+| `/loader.lua` | Players' executors | The loader: asks for the key, then downloads and runs the script |
+| `/api/script?key=...&robloxUserId=123` | The loader | The script itself, only for a key that works on that Roblox account |
 | `/api/check-key?key=...&robloxUserId=123` | The script's key prompt | Answers `{ "allowed": true }`, or `{ "allowed": false, "message": "..." }` saying what's wrong |
 | `/api/check?robloxUserId=123` | Your Roblox script | Answers `{ "allowed": true }` or `{ "allowed": false }` |
 | `/api/allowlist` | Older scripts | The full list, in the same format as before |
@@ -72,6 +75,7 @@ Optional:
 |---|---|
 | `SITE_NAME` | the name shown on the site and at the start of every key (default `RAIN`) |
 | `PUBLIC_API_TOKEN` | a random string your script must send to read `/api/check` and `/api/allowlist` |
+| `PUBLIC_URL` | your site's address, used inside the loader (worked out from `DISCORD_REDIRECT_URI` if you leave it out) |
 | `ROBLOX_RELINK_COOLDOWN_HOURS` | how long users wait before switching Roblox accounts (default `168`, one week; `0` turns it off) |
 
 Prefer clicking less? This repo includes `render.yaml`, so **New > Blueprint** sets up the service and asks you for each value.
@@ -109,7 +113,23 @@ This proves the Roblox account is theirs. They can delete the phrase afterwards.
 - give someone a license directly, without a key
 - delete unused keys or whole licenses
 
-## The Roblox script
+## The loader
+
+Players paste this into their executor (it's on their license page with a Copy button, and in the admin panel's **Script** tab):
+
+```
+loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
+```
+
+1. The loader shows a key box. **Get Key** copies your site's address; **Check Key** checks the key with `/api/check-key`.
+2. With a good key, it downloads the script from `/api/script` and runs it, passing the key in.
+3. It saves the key, so next time it goes straight through.
+
+**Uploading the script:** open `/admin`, go to **Script**, choose your `.lua` file and press **Upload**. It replaces the script for everyone straight away, and **Download** gets back what's live. Files up to 15 MB work. The script is sent zipped to executors that can unzip it, which is most of them.
+
+The loader itself is `roblox/Loader.lua`. The site fills in its own address when it sends it, so you don't need to edit it.
+
+## The Roblox script (server-side check)
 
 `roblox/LicenseCheck.server.lua` is a ready-made check. Put it in a **Script** inside **ServerScriptService**, set `SITE_URL`, and turn on **Game Settings > Security > Allow HTTP Requests**. It kicks anyone without an active license.
 

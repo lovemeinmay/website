@@ -9,10 +9,16 @@ const session = require("./src/session");
 const discord = require("./src/discord");
 const roblox = require("./src/roblox");
 const licenses = require("./src/licenses");
+const scripts = require("./src/script");
 const { HttpError, createRouter, readJsonBody, sendJson, redirect, sendStatic } = require("./src/http");
 
 const VIEWS = path.join(__dirname, "views");
 const PUBLIC = path.join(__dirname, "public");
+const LOADER_FILE = path.join(__dirname, "roblox", "Loader.lua");
+
+// Script uploads go through the JSON body as base64, which is about 4/3 the file size.
+const UPLOAD_PATH = "/api/admin/script";
+const MAX_UPLOAD_BODY = Math.ceil((scripts.MAX_SCRIPT_BYTES * 4) / 3) + 64 * 1024;
 const router = createRouter();
 
 // ---------------------------------------------------------------------------
@@ -58,6 +64,19 @@ function rateLimit(key, max, windowMs) {
 	if (hits.size > 5000) hits.clear();
 }
 
+// The site's own address, for links inside the loader.
+function siteUrl(ctx) {
+	return config.publicUrl || `https://${ctx.req.headers.host}`;
+}
+
+function parseRobloxUserId(value) {
+	const robloxUserId = Number(value);
+	if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
+		throw new HttpError(400, "robloxUserId must be a Roblox user ID number.");
+	}
+	return robloxUserId;
+}
+
 function checkApiToken(ctx) {
 	if (!config.publicApiToken) return;
 
@@ -100,6 +119,18 @@ router.get("/admin", (ctx) => {
 });
 
 router.get("/health", () => ({ ok: true }));
+
+// The loader players paste into their executor:
+//   loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
+// It asks for their key, then downloads the real script from /api/script.
+let loaderSource = null;
+
+router.get("/loader.lua", (ctx) => {
+	if (!loaderSource) loaderSource = fs.readFileSync(LOADER_FILE, "utf8");
+
+	ctx.res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+	ctx.res.end(loaderSource.replaceAll("{{SITE_URL}}", siteUrl(ctx)));
+});
 
 // ---------------------------------------------------------------------------
 // Discord login
@@ -283,6 +314,39 @@ router.delete("/api/admin/licenses/:id", async (ctx) => {
 	return { ok: true };
 });
 
+router.get("/api/admin/script", async (ctx) => {
+	requireAdmin(ctx);
+	return { script: await scripts.info(), loaderUrl: `${siteUrl(ctx)}/loader.lua` };
+});
+
+router.post(UPLOAD_PATH, async (ctx) => {
+	const admin = requireAdmin(ctx);
+
+	const script = await scripts.upload({
+		base64: ctx.body.base64,
+		fileName: ctx.body.fileName,
+		uploadedBy: admin.username,
+	});
+
+	return { script };
+});
+
+router.get("/api/admin/script/download", async (ctx) => {
+	requireAdmin(ctx);
+
+	const script = await scripts.current();
+	if (!script) throw new HttpError(404, "No script has been uploaded yet.");
+
+	const fileName = (script.info.fileName || "script.lua").replace(/[^\w.\- ]/g, "_");
+
+	ctx.res.writeHead(200, {
+		"Content-Type": "text/plain; charset=utf-8",
+		"Content-Disposition": `attachment; filename="${fileName}"`,
+		"Cache-Control": "no-store",
+	});
+	ctx.res.end(script.source);
+});
+
 // ---------------------------------------------------------------------------
 // Public API - what the Roblox script calls
 // ---------------------------------------------------------------------------
@@ -305,14 +369,38 @@ router.get("/api/check", async (ctx) => {
 // The key is the secret here, so this doesn't need PUBLIC_API_TOKEN
 // (a token written into a script you hand out isn't secret anyway).
 router.get("/api/check-key", async (ctx) => {
-	const robloxUserId = Number(ctx.query.get("robloxUserId"));
-	if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
-		throw new HttpError(400, "robloxUserId must be a Roblox user ID number.");
-	}
+	const robloxUserId = parseRobloxUserId(ctx.query.get("robloxUserId"));
 
 	rateLimit(`check-key:${robloxUserId}`, 20, 60 * 1000);
 
 	return licenses.checkKey(ctx.query.get("key"), robloxUserId);
+});
+
+// GET /api/script?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123
+//   ->  the script itself, but only for a key that works on that Roblox account
+//   ->  403 { "error": "This key is linked to a different Roblox account.", "reason": "wrong_account" }
+router.get("/api/script", async (ctx) => {
+	const robloxUserId = parseRobloxUserId(ctx.query.get("robloxUserId"));
+	rateLimit(`script:${robloxUserId}`, 10, 60 * 1000);
+
+	const result = await licenses.checkKey(ctx.query.get("key"), robloxUserId);
+	if (!result.allowed) {
+		return sendJson(ctx.res, 403, { error: result.message, reason: result.reason });
+	}
+
+	const script = await scripts.current();
+	if (!script) throw new HttpError(503, "The script hasn't been uploaded yet. Try again later.");
+
+	// Compress it when the executor says it can unzip (most can), which makes it about 5x smaller.
+	const gzip = /\bgzip\b/.test(String(ctx.req.headers["accept-encoding"] || ""));
+
+	ctx.res.writeHead(200, {
+		"Content-Type": "text/plain; charset=utf-8",
+		"Cache-Control": "no-store",
+		Vary: "Accept-Encoding",
+		...(gzip ? { "Content-Encoding": "gzip" } : {}),
+	});
+	ctx.res.end(gzip ? script.gzipped : script.source);
 });
 
 // GET /api/allowlist  ->  [ { "robloxUserId": 123, "robloxUsername": "...", "revoked": false } ]
@@ -349,13 +437,24 @@ async function handle(req, res) {
 			throw new HttpError(415, "Send requests as JSON.");
 		}
 
+		const sessionData = session.read(req);
+		let maxBody;
+
+		// Script uploads are big, so only read one from an admin.
+		if (req.method === "POST" && url.pathname === UPLOAD_PATH) {
+			if (!isAdmin(sessionData.user)) {
+				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
+			}
+			maxBody = MAX_UPLOAD_BODY;
+		}
+
 		const ctx = {
 			req,
 			res,
 			params: found.params,
 			query: url.searchParams,
-			session: session.read(req),
-			body: isApi && changesData ? await readJsonBody(req) : {},
+			session: sessionData,
+			body: isApi && changesData ? await readJsonBody(req, maxBody) : {},
 		};
 
 		const result = await found.handler(ctx);

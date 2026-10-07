@@ -39,10 +39,11 @@ function render() {
 
 	if (showKey) {
 		$("scriptKey").textContent = me.scriptKey;
+		$("loaderLine").textContent = `loadstring(game:HttpGet("${location.origin}/loader.lua"))()`;
 		$("scriptKeyText").textContent =
 			license.status === "needs_roblox"
-				? "Link your Roblox account below, then paste this into the script when it asks for a key."
-				: "Paste this into the script when it asks for a key.";
+				? "Link your Roblox account below first. Then it's two steps, and the script remembers your key after the first time."
+				: "Two steps, and the script remembers your key after the first time.";
 	}
 
 	// Redeem panel: for new users, and for timed licenses that can take more time.
@@ -147,6 +148,7 @@ $("linkForm").addEventListener("submit", (event) => {
 
 $("copyPhrase").addEventListener("click", () => copyText($("phrase").textContent, $("copyPhrase")));
 $("copyScriptKey").addEventListener("click", () => copyText($("scriptKey").textContent, $("copyScriptKey")));
+$("copyLoader").addEventListener("click", () => copyText($("loaderLine").textContent, $("copyLoader")));
 
 $("verifyBtn").addEventListener("click", () => {
 	$("verifyError").textContent = "";
