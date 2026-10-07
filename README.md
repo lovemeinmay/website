@@ -7,7 +7,7 @@ A website that controls who can use your Roblox script.
 - **Players** run a one-line loader. It asks for their key, and the site only sends them the real script if the key works on their Roblox account.
 - **You** upload the script in the admin panel. It's kept in your database, never in this (public) repo.
 
-Licenses are tied to one Discord account, and up to 3 Roblox accounts (set `MAX_ROBLOX_ACCOUNTS` to change that). Each Roblox account can only be on one license.
+Licenses are tied to one Discord account, and up to 3 Roblox accounts (set `MAX_ROBLOX_ACCOUNTS` to change that). Admins have no limit on their own license, and no wait before removing an account. Each Roblox account can only be on one license.
 
 ## How it fits together
 
@@ -111,6 +111,7 @@ This proves the Roblox account is theirs. They can delete the phrase afterwards.
 - add or remove time, or make a license lifetime
 - see who's in a game with the script right now (**In game**), and which game
 - see every time the script was started, by whom, on which account, in which game and server (**Activity** tab, or **Activity** on a license for just theirs; kept 90 days)
+- link a Roblox account to any license straight away with **Add account** (just the username: no profile phrase, no limit)
 - unlink one Roblox account (the **×** next to it) or all of them (**Unlink all**)
 - **Kick** someone out of their game (you can give a reason they'll see). It kicks every account on their license that's in a game. Their license isn't touched, so they can rejoin
 - revoke a license (blocked, but kept on record) and unrevoke it

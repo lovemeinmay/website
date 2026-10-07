@@ -67,19 +67,24 @@ function render() {
 
 	const pending = license.pending;
 	const accounts = license.accounts;
-	const full = accounts.length >= license.maxAccounts;
+	const unlimited = license.maxAccounts === null; // admins
+	const full = !unlimited && accounts.length >= license.maxAccounts;
 
 	$("linkVerify").hidden = !pending;
 	$("linkStart").hidden = !!pending || full;
 	$("linkFull").hidden = !!pending || !full;
 
-	$("linkTitle").textContent = accounts.length
-		? `Your Roblox accounts (${accounts.length} of ${license.maxAccounts})`
-		: "Link your Roblox account";
+	$("linkTitle").textContent = !accounts.length
+		? "Link your Roblox account"
+		: unlimited
+		  ? `Your Roblox accounts (${accounts.length})`
+		  : `Your Roblox accounts (${accounts.length} of ${license.maxAccounts})`;
 
-	$("linkText").textContent = accounts.length
-		? `You can link up to ${license.maxAccounts} accounts, and the script works on all of them. Add another below.`
-		: "Enter the Roblox account you'll run the script on. You can add more later.";
+	$("linkText").textContent = !accounts.length
+		? "Enter the Roblox account you'll run the script on. You can add more later."
+		: unlimited
+		  ? "You're an admin, so you can link as many accounts as you like. Add another below."
+		  : `You can link up to ${license.maxAccounts} accounts, and the script works on all of them. Add another below.`;
 
 	$("linkFull").textContent = "That's the most accounts a license can have. Remove one to add another.";
 

@@ -406,6 +406,7 @@ function renderLicenses() {
 									  }</button>`
 									: ""
 							}
+							${license.status !== "revoked" ? '<button class="btn btn-quiet btn-small" data-action="add-account">Add account</button>' : ""}
 							<button class="btn btn-quiet btn-small" data-action="activity">Activity</button>
 							<button class="btn btn-quiet btn-small" data-action="time">Change time</button>
 							<button class="btn btn-quiet btn-small" data-action="toggle" data-revoked="${license.revoked ? 1 : 0}">
@@ -461,6 +462,18 @@ $("licenseRows").addEventListener("click", async (event) => {
 			activityLicense = { id: license.id, name: license.discordUsername || license.discordId };
 			showTab("activity");
 			return;
+		}
+
+		if (button.dataset.action === "add-account") {
+			const name = license.discordUsername || license.discordId;
+			const username = prompt(
+				`Roblox username to link to ${name}'s license?\n\nIt's linked straight away: no profile phrase, and no account limit.`,
+				""
+			);
+			if (!username || !username.trim()) return;
+
+			await api("POST", `/api/admin/licenses/${id}/roblox`, { username: username.trim() });
+			toast(`${username.trim()} linked`);
 		}
 
 		if (button.dataset.action === "unlink") {

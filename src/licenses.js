@@ -67,8 +67,13 @@ function removableAt(account) {
 	return at > nowIso() ? at : null;
 }
 
-// What a user sees about their own license.
-function forUser(license) {
+// Admins can link as many accounts as they like, and remove them without waiting.
+function accountLimit(admin) {
+	return admin ? Infinity : config.maxRobloxAccounts;
+}
+
+// What a user sees about their own license. maxAccounts is null when there's no limit (admins).
+function forUser(license, { admin = false } = {}) {
 	if (!license) return null;
 
 	return {
@@ -79,9 +84,9 @@ function forUser(license) {
 			id: account.roblox_user_id,
 			username: account.roblox_username,
 			linkedAt: account.linked_at,
-			removableAt: removableAt(account),
+			removableAt: admin ? null : removableAt(account),
 		})),
-		maxAccounts: config.maxRobloxAccounts,
+		maxAccounts: admin ? null : config.maxRobloxAccounts,
 		pending: license.pending_roblox_user_id
 			? { id: license.pending_roblox_user_id, username: license.pending_roblox_username, phrase: license.pending_phrase }
 			: null,
@@ -262,7 +267,7 @@ async function redeemKey({ key, discordId, discordUsername }) {
 	return getByDiscord(discordId);
 }
 
-async function startRobloxLink(discordId, robloxUser, phrase) {
+async function startRobloxLink(discordId, robloxUser, phrase, { admin = false } = {}) {
 	const license = await getByDiscord(discordId);
 	if (!license) throw new HttpError(400, "Redeem a license key first.");
 	if (license.revoked) throw new HttpError(403, "Your license has been revoked. Contact an admin.");
@@ -271,7 +276,7 @@ async function startRobloxLink(discordId, robloxUser, phrase) {
 		throw new HttpError(400, "That Roblox account is already linked to your license.");
 	}
 
-	if (license.accounts.length >= config.maxRobloxAccounts) {
+	if (license.accounts.length >= accountLimit(admin)) {
 		throw new HttpError(
 			400,
 			`You've linked ${config.maxRobloxAccounts} accounts, which is the most a license can have. Remove one to add another.`
@@ -295,11 +300,11 @@ async function startRobloxLink(discordId, robloxUser, phrase) {
 	return getById(license.id);
 }
 
-async function completeRobloxLink(discordId, robloxUser) {
+async function completeRobloxLink(discordId, robloxUser, { admin = false } = {}) {
 	const license = await getByDiscord(discordId);
 	if (!license) throw new HttpError(400, "Redeem a license key first.");
 
-	if (license.accounts.length >= config.maxRobloxAccounts) {
+	if (license.accounts.length >= accountLimit(admin)) {
 		throw new HttpError(400, `Your license already has ${config.maxRobloxAccounts} accounts. Remove one to add another.`);
 	}
 
@@ -329,12 +334,12 @@ async function cancelRobloxLink(discordId) {
 }
 
 // A player unlinking one of their own accounts.
-async function removeRobloxAccount(discordId, robloxUserId) {
+async function removeRobloxAccount(discordId, robloxUserId, { admin = false } = {}) {
 	const license = await getByDiscord(discordId);
 	const account = license && license.accounts.find((item) => item.roblox_user_id === Number(robloxUserId));
 	if (!account) throw new HttpError(404, "That Roblox account isn't linked to your license.");
 
-	const waitUntil = removableAt(account);
+	const waitUntil = admin ? null : removableAt(account);
 	if (waitUntil) {
 		throw new HttpError(429, `You can remove ${account.roblox_username} after ${new Date(waitUntil).toUTCString()}.`);
 	}
@@ -441,6 +446,36 @@ async function resetRoblox(id) {
 			args: [license.id],
 		},
 	]);
+
+	return forAdmin(await getById(license.id));
+}
+
+// Link a Roblox account to any license straight away (admin): no profile phrase, no limit.
+async function addAccount(id, robloxUser) {
+	const license = await requireById(id);
+
+	if (license.accounts.some((account) => account.roblox_user_id === robloxUser.id)) {
+		throw new HttpError(400, `${robloxUser.name} is already linked to this license.`);
+	}
+
+	try {
+		await db.run("INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)", [
+			license.id,
+			robloxUser.id,
+			robloxUser.name,
+			nowIso(),
+		]);
+	} catch (err) {
+		if (db.isUniqueError(err)) {
+			throw new HttpError(409, `${robloxUser.name} is already linked to someone else's license. Unlink it there first.`);
+		}
+		throw err;
+	}
+
+	// If they were halfway through verifying this same account, that's done now.
+	if (license.pending_roblox_user_id === robloxUser.id) {
+		await cancelRobloxLink(license.discord_id);
+	}
 
 	return forAdmin(await getById(license.id));
 }
@@ -657,6 +692,7 @@ module.exports = {
 	checkKey,
 	verifyKey,
 	removeRobloxAccount,
+	addAccount,
 	unlinkAccount,
 	logExecution,
 	listExecutions,

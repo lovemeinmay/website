@@ -93,6 +93,11 @@ function gameFromQuery(query) {
 	};
 }
 
+// A user's view of their own license. Admins get no account limit and no removal wait.
+function userView(license, user) {
+	return licenses.forUser(license, { admin: isAdmin(user) });
+}
+
 function checkApiToken(ctx) {
 	if (!config.publicApiToken) return;
 
@@ -203,7 +208,7 @@ router.get("/api/me", async (ctx) => {
 		user,
 		isAdmin: isAdmin(user),
 		siteName: config.siteName,
-		license: licenses.forUser(license),
+		license: userView(license, user),
 		scriptKey: license ? await licenses.scriptKeyFor(user.id) : null,
 	};
 });
@@ -218,7 +223,7 @@ router.post("/api/redeem", async (ctx) => {
 		discordUsername: user.username,
 	});
 
-	return { license: licenses.forUser(license), scriptKey: await licenses.scriptKeyFor(user.id) };
+	return { license: userView(license, user), scriptKey: await licenses.scriptKeyFor(user.id) };
 });
 
 router.post("/api/roblox/start", async (ctx) => {
@@ -228,8 +233,8 @@ router.post("/api/roblox/start", async (ctx) => {
 	const robloxUser = await roblox.findByUsername(ctx.body.username);
 	if (!robloxUser) throw new HttpError(404, "No Roblox account has that username.");
 
-	const license = await licenses.startRobloxLink(user.id, robloxUser, roblox.makePhrase());
-	return { license: licenses.forUser(license) };
+	const license = await licenses.startRobloxLink(user.id, robloxUser, roblox.makePhrase(), { admin: isAdmin(user) });
+	return { license: userView(license, user) };
 });
 
 router.post("/api/roblox/verify", async (ctx) => {
@@ -251,20 +256,20 @@ router.post("/api/roblox/verify", async (ctx) => {
 		);
 	}
 
-	const updated = await licenses.completeRobloxLink(user.id, { id: profile.id, name: profile.name });
-	return { license: licenses.forUser(updated) };
+	const updated = await licenses.completeRobloxLink(user.id, { id: profile.id, name: profile.name }, { admin: isAdmin(user) });
+	return { license: userView(updated, user) };
 });
 
 router.post("/api/roblox/remove", async (ctx) => {
 	const user = requireUser(ctx);
-	const license = await licenses.removeRobloxAccount(user.id, ctx.body.robloxUserId);
-	return { license: licenses.forUser(license) };
+	const license = await licenses.removeRobloxAccount(user.id, ctx.body.robloxUserId, { admin: isAdmin(user) });
+	return { license: userView(license, user) };
 });
 
 router.post("/api/roblox/cancel", async (ctx) => {
 	const user = requireUser(ctx);
 	await licenses.cancelRobloxLink(user.id);
-	return { license: licenses.forUser(await licenses.getByDiscord(user.id)) };
+	return { license: userView(await licenses.getByDiscord(user.id), user) };
 });
 
 // ---------------------------------------------------------------------------
@@ -342,6 +347,16 @@ router.patch("/api/admin/licenses/:id", async (ctx) => {
 
 	const { revoked, addDays, lifetime, note } = ctx.body;
 	return { license: await licenses.updateLicense(ctx.params.id, { revoked, addDays, lifetime, note }) };
+});
+
+// Link a Roblox account to a license by username: no profile phrase, no limit.
+router.post("/api/admin/licenses/:id/roblox", async (ctx) => {
+	requireAdmin(ctx);
+
+	const robloxUser = await roblox.findByUsername(ctx.body.username);
+	if (!robloxUser) throw new HttpError(404, "No Roblox account has that username.");
+
+	return { license: await licenses.addAccount(ctx.params.id, robloxUser) };
 });
 
 router.delete("/api/admin/licenses/:id/roblox/:robloxUserId", async (ctx) => {
