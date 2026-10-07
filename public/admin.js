@@ -34,16 +34,107 @@ function renderSummary() {
 // Tabs
 // ---------------------------------------------------------------------------
 
+const TABS = {
+	keys: ["tabKeys", "keysTab"],
+	licenses: ["tabLicenses", "licensesTab"],
+	script: ["tabScript", "scriptTab"],
+};
+
 function showTab(name) {
-	const keys = name === "keys";
-	$("tabKeys").setAttribute("aria-selected", String(keys));
-	$("tabLicenses").setAttribute("aria-selected", String(!keys));
-	$("keysTab").hidden = !keys;
-	$("licensesTab").hidden = keys;
+	for (const [tab, [button, panel]] of Object.entries(TABS)) {
+		$(button).setAttribute("aria-selected", String(tab === name));
+		$(panel).hidden = tab !== name;
+	}
+
+	if (name === "script") {
+		loadScript().catch((err) => {
+			$("scriptState").textContent = "Couldn't load";
+			$("scriptMeta").textContent = err.message;
+		});
+	}
 }
 
 $("tabKeys").addEventListener("click", () => showTab("keys"));
 $("tabLicenses").addEventListener("click", () => showTab("licenses"));
+$("tabScript").addEventListener("click", () => showTab("script"));
+
+// ---------------------------------------------------------------------------
+// Script
+// ---------------------------------------------------------------------------
+
+const MAX_SCRIPT_BYTES = 15 * 1024 * 1024;
+
+function formatBytes(bytes) {
+	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+	return `${bytes} bytes`;
+}
+
+function renderScript(script) {
+	$("scriptCard").dataset.state = script ? "live" : "empty";
+	$("scriptDownload").hidden = !script;
+
+	if (!script) {
+		$("scriptState").textContent = "No script uploaded yet";
+		$("scriptMeta").textContent = "Players can enter their key, but there's nothing to load until you upload one.";
+		return;
+	}
+
+	$("scriptState").textContent = script.fileName || "Script";
+	$("scriptMeta").textContent = `Live · ${formatBytes(script.size)} · uploaded ${formatDate(script.uploadedAt)}${
+		script.uploadedBy ? ` by ${script.uploadedBy}` : ""
+	}`;
+}
+
+async function loadScript() {
+	const result = await api("GET", "/api/admin/script");
+	renderScript(result.script);
+	$("loaderLine").textContent = `loadstring(game:HttpGet("${result.loaderUrl}"))()`;
+}
+
+// Read a file as base64 (without the "data:...;base64," part).
+function readAsBase64(file) {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+		reader.onerror = () => reject(new Error("Couldn't read that file."));
+		reader.readAsDataURL(file);
+	});
+}
+
+$("scriptForm").addEventListener("submit", (event) => {
+	event.preventDefault();
+	$("scriptError").textContent = "";
+
+	const file = $("scriptFile").files[0];
+	if (!file) {
+		$("scriptError").textContent = "Choose a .lua file first.";
+		return;
+	}
+
+	if (file.size > MAX_SCRIPT_BYTES) {
+		$("scriptError").textContent = "That file is bigger than 15 MB.";
+		return;
+	}
+
+	busy($("scriptBtn"), async () => {
+		const label = $("scriptBtn").textContent;
+		$("scriptBtn").textContent = "Uploading...";
+
+		try {
+			const result = await api("POST", "/api/admin/script", { base64: await readAsBase64(file), fileName: file.name });
+			renderScript(result.script);
+			$("scriptFile").value = "";
+			toast("Script uploaded. Players get it on their next load.");
+		} catch (err) {
+			$("scriptError").textContent = err.message;
+		} finally {
+			$("scriptBtn").textContent = label;
+		}
+	});
+});
+
+$("copyLoader").addEventListener("click", () => copyText($("loaderLine").textContent, $("copyLoader")));
 
 // ---------------------------------------------------------------------------
 // Keys

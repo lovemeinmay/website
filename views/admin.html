@@ -19,6 +19,7 @@
 		<div class="tabs" role="tablist">
 			<button class="tab" role="tab" id="tabKeys" aria-selected="true" aria-controls="keysTab">Keys</button>
 			<button class="tab" role="tab" id="tabLicenses" aria-selected="false" aria-controls="licensesTab">Licenses</button>
+			<button class="tab" role="tab" id="tabScript" aria-selected="false" aria-controls="scriptTab">Script</button>
 		</div>
 
 		<!-- Keys -->
@@ -138,6 +139,39 @@
 					<tbody id="licenseRows"></tbody>
 				</table>
 			</div>
+		</section>
+
+		<!-- Script -->
+		<section id="scriptTab" role="tabpanel" aria-labelledby="tabScript" hidden>
+			<div class="script-card" id="scriptCard" data-state="loading">
+				<div>
+					<p class="script-state" id="scriptState">Loading</p>
+					<p class="muted" id="scriptMeta"></p>
+				</div>
+				<a class="btn btn-quiet btn-small" href="/api/admin/script/download" id="scriptDownload" hidden>Download</a>
+			</div>
+
+			<form class="admin-form upload" id="scriptForm" novalidate>
+				<div>
+					<label for="scriptFile">Upload a new version (.lua)</label>
+					<input id="scriptFile" type="file" accept=".lua,.luau,.txt,text/plain" />
+				</div>
+				<button class="btn" type="submit" id="scriptBtn">Upload</button>
+			</form>
+			<p class="form-error" id="scriptError" role="alert"></p>
+			<p class="muted script-help">
+				Uploading replaces the script for everyone straight away. It's stored in your database, not in GitHub,
+				and the site only sends it to players whose key works on their Roblox account.
+			</p>
+
+			<div class="toolbar">
+				<h2>What players run</h2>
+			</div>
+			<div class="copy-line">
+				<code id="loaderLine"></code>
+				<button class="btn btn-quiet btn-small" type="button" id="copyLoader">Copy</button>
+			</div>
+			<p class="muted script-help">Players paste this into their executor. It's also on every player's license page, next to their key.</p>
 		</section>
 
 		<section class="api-box">

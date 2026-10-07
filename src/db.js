@@ -80,6 +80,28 @@ async function init() {
 			)`,
 			args: [],
 		},
+		{
+			// The script players load, split into pieces (see src/script.js).
+			sql: `CREATE TABLE IF NOT EXISTS script_chunks (
+				version INTEGER NOT NULL,
+				idx INTEGER NOT NULL,
+				data BLOB NOT NULL,
+				PRIMARY KEY (version, idx)
+			)`,
+			args: [],
+		},
+		{
+			sql: `CREATE TABLE IF NOT EXISTS script_info (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				version INTEGER NOT NULL,
+				size INTEGER NOT NULL,
+				sha256 TEXT NOT NULL,
+				file_name TEXT,
+				uploaded_at TEXT NOT NULL,
+				uploaded_by TEXT
+			)`,
+			args: [],
+		},
 	]);
 }
 

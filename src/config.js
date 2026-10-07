@@ -34,10 +34,23 @@ if (sessionSecret.length < 16) {
 
 const siteName = env.SITE_NAME || "RAIN";
 
+// The site's own address (https://your-app.onrender.com), used in the loader script.
+// It's worked out from DISCORD_REDIRECT_URI, or you can set PUBLIC_URL yourself.
+function originOf(value) {
+	try {
+		return new URL(value).origin;
+	} catch {
+		return "";
+	}
+}
+
+const publicUrl = originOf(env.PUBLIC_URL) || originOf(env.DISCORD_REDIRECT_URI);
+
 const config = {
 	isProduction,
 	port: Number(env.PORT) || 3000,
 	siteName,
+	publicUrl,
 	keyPrefix: (env.KEY_PREFIX || siteName).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "KEY",
 	sessionSecret,
 	adminIds: list(env.ADMIN_DISCORD_IDS),
