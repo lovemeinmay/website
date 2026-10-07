@@ -2,10 +2,10 @@ const $ = (id) => document.getElementById(id);
 
 const STATUS_TEXT = {
 	none: ["No license yet", "Redeem a key below to get started."],
-	needs_roblox: ["Almost there", "Link a Roblox account so the script knows it's you."],
+	needs_roblox: ["Almost there", "Link a Roblox account."],
 	active: ["Active", "The script works on the Roblox accounts linked below."],
-	expired: ["Expired", "Your time ran out. Redeem a new key to add more."],
-	revoked: ["Revoked", "An admin revoked this license. Contact them if you think it's a mistake."],
+	expired: ["Expired", "Your time ran out. Buy a new key to add more."],
+	revoked: ["Revoked", "An admin removed this license. Contact 56p0."],
 };
 
 let me = null;
