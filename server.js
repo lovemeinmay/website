@@ -78,6 +78,21 @@ function parseRobloxUserId(value) {
 	return robloxUserId;
 }
 
+// The game the script is running in, as it reports it: ?placeId=...&jobId=...&game=...
+function gameFromQuery(query) {
+	const placeId = Number(query.get("placeId"));
+
+	return {
+		placeId: Number.isSafeInteger(placeId) && placeId > 0 ? placeId : null,
+		jobId: String(query.get("jobId") || "").replace(/[^\w-]/g, "").slice(0, 64) || null,
+		gameName:
+			String(query.get("game") || "")
+				.replace(/[\u0000-\u001f\u007f]/g, "")
+				.trim()
+				.slice(0, 100) || null,
+	};
+}
+
 function checkApiToken(ctx) {
 	if (!config.publicApiToken) return;
 
@@ -240,6 +255,12 @@ router.post("/api/roblox/verify", async (ctx) => {
 	return { license: licenses.forUser(updated) };
 });
 
+router.post("/api/roblox/remove", async (ctx) => {
+	const user = requireUser(ctx);
+	const license = await licenses.removeRobloxAccount(user.id, ctx.body.robloxUserId);
+	return { license: licenses.forUser(license) };
+});
+
 router.post("/api/roblox/cancel", async (ctx) => {
 	const user = requireUser(ctx);
 	await licenses.cancelRobloxLink(user.id);
@@ -257,11 +278,21 @@ router.get("/api/admin/overview", async (ctx) => {
 
 	return {
 		stats: { ...stats, online: presence.onlineCount() },
-		licenses: licenseList.map((license) => ({
-			...license,
-			online: !!license.robloxUserId && presence.isOnline(license.robloxUserId),
-			kickPending: !!license.robloxUserId && presence.hasKick(license.robloxUserId),
-		})),
+		licenses: licenseList.map((license) => {
+			const accounts = license.accounts.map((account) => ({
+				...account,
+				online: presence.isOnline(account.id),
+				game: presence.currentGame(account.id),
+				kickPending: presence.hasKick(account.id),
+			}));
+
+			return {
+				...license,
+				accounts,
+				online: accounts.some((account) => account.online),
+				kickPending: accounts.some((account) => account.kickPending),
+			};
+		}),
 		keys,
 	};
 });
@@ -313,6 +344,17 @@ router.patch("/api/admin/licenses/:id", async (ctx) => {
 	return { license: await licenses.updateLicense(ctx.params.id, { revoked, addDays, lifetime, note }) };
 });
 
+router.delete("/api/admin/licenses/:id/roblox/:robloxUserId", async (ctx) => {
+	requireAdmin(ctx);
+	return { license: await licenses.unlinkAccount(ctx.params.id, ctx.params.robloxUserId) };
+});
+
+// Every time the script started: who, which account, which game. Newest first.
+router.get("/api/admin/activity", async (ctx) => {
+	requireAdmin(ctx);
+	return { executions: await licenses.listExecutions({ licenseId: ctx.query.get("licenseId"), limit: ctx.query.get("limit") }) };
+});
+
 router.post("/api/admin/licenses/:id/reset-roblox", async (ctx) => {
 	requireAdmin(ctx);
 	return { license: await licenses.resetRoblox(ctx.params.id) };
@@ -330,14 +372,17 @@ router.post("/api/admin/licenses/:id/kick", async (ctx) => {
 	requireAdmin(ctx);
 
 	const license = await licenses.getForAdmin(ctx.params.id);
-	if (!license.robloxUserId) {
+	if (!license.accounts.length) {
 		throw new HttpError(400, "This license has no Roblox account linked, so there's nobody to kick.");
 	}
 
 	const reason = typeof ctx.body.reason === "string" ? ctx.body.reason.trim().slice(0, 200) : "";
-	const online = presence.isOnline(license.robloxUserId);
+	const message = reason ? `You were kicked: ${reason}` : "You were kicked by an admin.";
+	const online = license.accounts.filter((account) => presence.isOnline(account.id)).map((account) => account.username);
 
-	presence.requestKick(license.robloxUserId, reason ? `You were kicked: ${reason}` : "You were kicked by an admin.");
+	// Kick every account on the license, in case they're on an alt.
+	for (const account of license.accounts) presence.requestKick(account.id, message);
+
 	return { ok: true, online };
 });
 
@@ -400,12 +445,18 @@ router.get("/api/check-key", async (ctx) => {
 
 	rateLimit(`check-key:${robloxUserId}`, 20, 60 * 1000);
 
-	const result = await licenses.checkKey(ctx.query.get("key"), robloxUserId);
+	const { result, license, account } = await licenses.verifyKey(ctx.query.get("key"), robloxUserId);
 	if (!result.allowed) return result;
 
-	presence.seen(robloxUserId);
+	const game = gameFromQuery(ctx.query);
+	presence.seen(robloxUserId, game);
 
-	// The running script checks in with watch=1 every 15 seconds. That's when a kick reaches it:
+	// The script says start=1 once, when it starts. That's what the Activity tab lists.
+	if (ctx.query.get("start") === "1") {
+		await licenses.logExecution({ license, account, ...game });
+	}
+
+	// While it runs, it checks in with watch=1 every 15 seconds. That's when a kick reaches it:
 	//   ->  { "allowed": true, "kick": true, "message": "You were kicked by an admin." }
 	if (ctx.query.get("watch") === "1") {
 		const kick = presence.takeKick(robloxUserId);

@@ -55,6 +55,7 @@ const config = {
 	sessionSecret,
 	adminIds: list(env.ADMIN_DISCORD_IDS),
 	publicApiToken: env.PUBLIC_API_TOKEN || "",
+	maxRobloxAccounts: Math.max(1, Math.floor(Number(env.MAX_ROBLOX_ACCOUNTS) || 3)),
 	robloxRelinkCooldownHours: env.ROBLOX_RELINK_COOLDOWN_HOURS === undefined ? 168 : Number(env.ROBLOX_RELINK_COOLDOWN_HOURS),
 	discord: {
 		clientId: env.DISCORD_CLIENT_ID || "",

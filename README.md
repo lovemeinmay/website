@@ -7,14 +7,14 @@ A website that controls who can use your Roblox script.
 - **Players** run a one-line loader. It asks for their key, and the site only sends them the real script if the key works on their Roblox account.
 - **You** upload the script in the admin panel. It's kept in your database, never in this (public) repo.
 
-Licenses are tied to both accounts: one Discord account per license, one Roblox account per license.
+Licenses are tied to one Discord account, and up to 3 Roblox accounts (set `MAX_ROBLOX_ACCOUNTS` to change that). Each Roblox account can only be on one license.
 
 ## How it fits together
 
 | Page | Who uses it | What it's for |
 |---|---|---|
 | `/` | Everyone | Landing page with "Sign in with Discord" |
-| `/dashboard` | Users | Redeem a key, link or change their Roblox account, see when their license ends |
+| `/dashboard` | Users | Redeem a key, link and remove Roblox accounts, see when their license ends |
 | `/admin` | You (and co-admins) | Make keys, manage every license, upload the script |
 | `/loader.lua` | Players' executors | The loader: asks for the key, then downloads and runs the script |
 | `/api/script?key=...&robloxUserId=123` | The loader | The script itself, only for a key that works on that Roblox account |
@@ -76,7 +76,8 @@ Optional:
 | `SITE_NAME` | the name shown on the site and at the start of every key (default `RAIN`) |
 | `PUBLIC_API_TOKEN` | a random string your script must send to read `/api/check` and `/api/allowlist` |
 | `PUBLIC_URL` | your site's address, used inside the loader (worked out from `DISCORD_REDIRECT_URI` if you leave it out) |
-| `ROBLOX_RELINK_COOLDOWN_HOURS` | how long users wait before switching Roblox accounts (default `168`, one week; `0` turns it off) |
+| `MAX_ROBLOX_ACCOUNTS` | how many Roblox accounts one license can link (default `3`) |
+| `ROBLOX_RELINK_COOLDOWN_HOURS` | how long after linking an account a user must wait before they can remove it (default `168`, one week; `0` turns it off). Stops one license being passed around. Admins can unlink any time |
 
 Prefer clicking less? This repo includes `render.yaml`, so **New > Blueprint** sets up the service and asks you for each value.
 
@@ -93,7 +94,7 @@ When it's working, Render's logs end with `RAIN license server listening on port
 
 **Making keys:** open `/admin`, choose how many keys and how much time each gives (lifetime or a number of days), and click **Make keys**. Copy them and send them to people.
 
-**Redeeming:** the user signs in at your site, pastes their key, then links their Roblox account:
+**Redeeming:** the user signs in at your site, pastes their key, then links their Roblox account (and up to 2 more the same way, if they play on alts):
 
 1. They type their Roblox username.
 2. The site shows a short phrase like `maple otter river candle sunny jade`.
@@ -108,10 +109,11 @@ This proves the Roblox account is theirs. They can delete the phrase afterwards.
 **In the admin panel** you can:
 
 - add or remove time, or make a license lifetime
-- see who's in a game with the script right now (**In game**)
-- **Kick** someone out of their game (you can give a reason they'll see). Their license isn't touched, so they can rejoin
+- see who's in a game with the script right now (**In game**), and which game
+- see every time the script was started, by whom, on which account, in which game and server (**Activity** tab, or **Activity** on a license for just theirs; kept 90 days)
+- unlink one Roblox account (the **×** next to it) or all of them (**Unlink all**)
+- **Kick** someone out of their game (you can give a reason they'll see). It kicks every account on their license that's in a game. Their license isn't touched, so they can rejoin
 - revoke a license (blocked, but kept on record) and unrevoke it
-- unlink someone's Roblox account so they can link a new one right away
 - give someone a license directly, without a key
 - delete unused keys or whole licenses
 
@@ -126,7 +128,8 @@ loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
 1. The loader shows a key box. **Get Key** copies your site's address; **Check Key** checks the key with `/api/check-key`.
 2. With a good key, it downloads the script from `/api/script` and runs it, passing the key in.
 3. It saves the key, so next time it goes straight through.
-4. While the script runs, it checks in every 15 seconds (`/api/check-key` with `watch=1`). If the license has been revoked, deleted, expired or unlinked, or you pressed **Kick**, it turns itself off and kicks the player. If your site can't be reached, it keeps running.
+4. When the script starts, it tells the site which game and server it's in (`placeId`, `jobId`, `game`, with `start=1`). That's what the Activity tab lists.
+5. While the script runs, it checks in every 15 seconds (`/api/check-key` with `watch=1`). If the license has been revoked, deleted, expired or unlinked, or you pressed **Kick**, it turns itself off and kicks the player. If your site can't be reached, it keeps running.
 
 A kick waits up to 2 minutes for the player's script to check in. Who's in a game and waiting kicks are kept in memory, so a restart clears them.
 

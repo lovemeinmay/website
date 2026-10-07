@@ -50,7 +50,7 @@
 				<button class="btn btn-quiet btn-small" type="button" id="copyScriptKey">Copy</button>
 			</div>
 
-			<p class="muted">Your key only works on the Roblox account linked to this license, so sharing it won't work.</p>
+			<p class="muted">Your key only works on the Roblox accounts linked to this license, so sharing it won't work.</p>
 		</section>
 
 		<section class="panel" id="redeemPanel" hidden>
@@ -72,6 +72,8 @@
 		<section class="panel" id="linkPanel" hidden>
 			<h2 id="linkTitle">Link your Roblox account</h2>
 
+			<ul class="account-list" id="accountList" hidden></ul>
+
 			<div id="linkStart">
 				<p class="muted" id="linkText" style="margin-bottom: 16px">Enter the Roblox account you'll run the script on.</p>
 				<form id="linkForm" novalidate>
@@ -86,7 +88,7 @@
 				</form>
 			</div>
 
-			<p class="muted" id="linkCooldown" hidden></p>
+			<p class="muted" id="linkFull" hidden></p>
 
 			<div id="linkVerify" hidden>
 				<p class="muted" style="margin-bottom: 8px">
