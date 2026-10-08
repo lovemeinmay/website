@@ -229,7 +229,7 @@ router.post("/api/redeem", async (ctx) => {
 
 // Link a Roblox account to the user's license by username. No profile phrase:
 // the key stays locked to whatever account is linked here.
-router.post("/api/roblox/link", async (ctx) => {
+async function linkRoblox(ctx) {
 	const user = requireUser(ctx);
 	rateLimit(`roblox:${user.id}`, 15, 60 * 1000);
 
@@ -238,7 +238,14 @@ router.post("/api/roblox/link", async (ctx) => {
 
 	const license = await licenses.linkRobloxAccount(user.id, robloxUser, { admin: isAdmin(user) });
 	return { license: userView(license, user) };
-});
+}
+
+router.post("/api/roblox/link", linkRoblox);
+
+// Old name for the same thing. Kept so a dashboard page cached from before the
+// verification was removed (it posts to /api/roblox/start) still links instead of
+// getting a 404. Safe to drop once nobody's running the old page.
+router.post("/api/roblox/start", linkRoblox);
 
 router.post("/api/roblox/remove", async (ctx) => {
 	const user = requireUser(ctx);
