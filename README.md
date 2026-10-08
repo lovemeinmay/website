@@ -101,7 +101,7 @@ When it's working, Render's logs end with `RAIN license server listening on port
 
 **Timed keys stack:** redeeming a 30-day key on a license with 10 days left gives 40 days. Redeeming after it expires starts from today.
 
-**Script key:** once a key is redeemed, the dashboard shows it under **Your script key** with a Copy button. The script asks for this key the first time it runs and remembers it after that. A key only works on the Roblox account linked to its license, so a shared key is useless to anyone else. Licenses you give out directly (without a key) get a script key made for them the first time the user opens their dashboard.
+**Script key:** once a key is redeemed, the dashboard shows a ready-to-paste snippet under **Run the script** with the key filled into a `scriptkey="..."` line. The loader reads the key from it, so there's nothing to type in-game. A key only works on the Roblox account linked to its license, so a shared key is useless to anyone else. Licenses you give out directly (without a key) get a script key made for them the first time the user opens their dashboard.
 
 **In the admin panel** you can:
 
@@ -117,15 +117,16 @@ When it's working, Render's logs end with `RAIN license server listening on port
 
 ## The loader
 
-Players paste this into their executor (it's on their license page with a Copy button, and in the admin panel's **Script** tab):
+Players paste this into their executor (it's on their license page with a Copy button). The first line sets their key; the loader reads it, so there's nothing to type in-game:
 
 ```
+scriptkey="RAIN-XXXXX-XXXXX-XXXXX"
 loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
 ```
 
-1. The loader shows a key box. **Get Key** copies your site's address; **Check Key** checks the key with `/api/check-key`.
-2. With a good key, it downloads the script from `/api/script` and runs it, passing the key in.
-3. It saves the key, so next time it goes straight through.
+1. The loader reads the key from the `scriptkey` global (it also accepts `script_key`), checks it with `/api/check-key`, and saves it.
+2. If no `scriptkey` is set and no saved key works, it shows a key box with a **Check Key** button as a fallback.
+3. With a good key, it downloads the script from `/api/script` and runs it, passing the key in. Next time it goes straight through.
 4. When the script starts, it tells the site which game and server it's in (`placeId`, `jobId`, `game`, with `start=1`). That's what the Activity tab lists.
 5. While the script runs, it checks in every 15 seconds (`/api/check-key` with `watch=1`). If the license has been revoked, deleted, expired or unlinked, or you pressed **Kick**, it turns itself off and kicks the player. If your site can't be reached, it keeps running.
 

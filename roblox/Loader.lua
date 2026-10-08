@@ -486,7 +486,71 @@ local function prompt(savedKey)
 	return source, goodKey
 end
 
--- Wait for the game and the player, then ask for the key.
+-- A key can be set as a global before the loader runs, instead of typing it in:
+--   scriptkey = "RAIN-XXXXX-XXXXX-XXXXX"
+--   loadstring(game:HttpGet("{{SITE_URL}}/loader.lua"))()
+-- Read it from wherever the executor keeps globals.
+local function providedKey()
+	local function read(name)
+		local value
+
+		pcall(function()
+			if getgenv then
+				local env = getgenv()
+				if type(env) == "table" and env[name] ~= nil then
+					value = env[name]
+					return
+				end
+			end
+
+			if type(_G) == "table" and _G[name] ~= nil then
+				value = _G[name]
+			end
+		end)
+
+		return type(value) == "string" and value or nil
+	end
+
+	local raw = read("scriptkey") or read("script_key") or read("ScriptKey") or read("Key")
+	if not raw then
+		return nil
+	end
+
+	local key = normalize(raw)
+	return key ~= "" and key or nil
+end
+
+-- Check a key and download the script without showing the prompt.
+---@param key string
+---@return string? source
+---@return string? key
+local function loadWithKey(key)
+	key = normalize(key)
+	if key == "" then
+		return nil
+	end
+
+	local allowed = checkKey(key)
+
+	if not allowed then
+		-- A key the site actively rejected is wrong, so stop remembering it.
+		if allowed == false then
+			forgetKey()
+		end
+		return nil
+	end
+
+	saveKey(key)
+
+	local source = downloadScript(key)
+	if not source then
+		return nil
+	end
+
+	return source, key
+end
+
+-- Wait for the game and the player, then get the key.
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
@@ -495,7 +559,25 @@ while not Players.LocalPlayer do
 	task.wait()
 end
 
-local source, key = prompt(loadSavedKey())
+local source, key
+
+-- 1) A key given up front (scriptkey = "..."). 2) The key saved from last time.
+-- Both are checked quietly. 3) Otherwise, ask for it on screen.
+local given = providedKey()
+if given then
+	source, key = loadWithKey(given)
+end
+
+if not source then
+	local saved = loadSavedKey()
+	if saved then
+		source, key = loadWithKey(saved)
+	end
+end
+
+if not source then
+	source, key = prompt(nil)
+end
 
 if not source then
 	return warn("No valid key, so the script didn't load.")

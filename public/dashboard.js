@@ -35,17 +35,19 @@ function render() {
 		}
 	}
 
-	// Script key: what the player pastes into the script.
+	// Script key: the two-line snippet the player pastes into their executor.
+	// The first line sets the key as a global; the loader reads it, so there's
+	// nothing to type in-game.
 	const showKey = !!me.scriptKey && !!license && license.status !== "revoked";
 	$("scriptKeyPanel").hidden = !showKey;
 
 	if (showKey) {
-		$("scriptKey").textContent = me.scriptKey;
-		$("loaderLine").textContent = `loadstring(game:HttpGet("${location.origin}/loader.lua"))()`;
+		$("loaderSnippet").textContent =
+			`scriptkey="${me.scriptKey}"\n` + `loadstring(game:HttpGet("${location.origin}/loader.lua"))()`;
 		$("scriptKeyText").textContent =
 			license.status === "needs_roblox"
-				? "Link your Roblox account below first. Then it's two steps, and the script remembers your key after the first time."
-				: "Two steps, and the script remembers your key after the first time.";
+				? "Link your Roblox account below first, then paste this into your executor and run it."
+				: "Paste this into your executor and run it. The key is set for you, so there's nothing to type in-game.";
 	}
 
 	// Redeem panel: for new users, and for timed licenses that can take more time.
@@ -166,8 +168,7 @@ $("linkForm").addEventListener("submit", (event) => {
 	});
 });
 
-$("copyScriptKey").addEventListener("click", () => copyText($("scriptKey").textContent, $("copyScriptKey")));
-$("copyLoader").addEventListener("click", () => copyText($("loaderLine").textContent, $("copyLoader")));
+$("copyLoader").addEventListener("click", () => copyText($("loaderSnippet").textContent, $("copyLoader")));
 
 $("accountList").addEventListener("click", (event) => {
 	const button = event.target.closest("button[data-remove]");
