@@ -3,8 +3,9 @@
 A website that controls who can use your Roblox script.
 
 - **You** make license keys in the admin panel and hand them out.
-- **Users** sign in with Discord, redeem a key, and verify their Roblox account by putting a short phrase in their Roblox profile.
+- **Users** sign in with Discord, redeem a key, and link the Roblox account they'll play on (just the username).
 - **Players** run a one-line loader. It asks for their key, and the site only sends them the real script if the key works on their Roblox account.
+- A key only works in **one game at a time** - if it's already running somewhere, the newer login is turned away.
 - **You** upload the script in the admin panel. It's kept in your database, never in this (public) repo.
 
 Licenses are tied to one Discord account, and up to 3 Roblox accounts (set `MAX_ROBLOX_ACCOUNTS` to change that). Admins have no limit on their own license, and no wait before removing an account. Each Roblox account can only be on one license.
@@ -94,13 +95,9 @@ When it's working, Render's logs end with `RAIN license server listening on port
 
 **Making keys:** open `/admin`, choose how many keys and how much time each gives (lifetime or a number of days), and click **Make keys**. Copy them and send them to people.
 
-**Redeeming:** the user signs in at your site, pastes their key, then links their Roblox account (and up to 2 more the same way, if they play on alts):
+**Redeeming:** the user signs in at your site, pastes their key, then links the Roblox account they'll play on by typing its username (and up to 2 more the same way, if they play on alts). The key locks to the accounts linked here, so it only works when run on one of them.
 
-1. They type their Roblox username.
-2. The site shows a short phrase like `maple otter river candle sunny jade`.
-3. They paste it into their Roblox profile's About section and press **Verify account**.
-
-This proves the Roblox account is theirs. They can delete the phrase afterwards.
+**One game at a time:** a key can only be running in one place at once. While someone's playing with it, anyone else who starts it on that key is turned away ("already being used right now"), and the script shuts down. A session frees up about 40 seconds after it stops checking in, so after closing the game or hopping servers there's a short wait before it can run again.
 
 **Timed keys stack:** redeeming a 30-day key on a license with 10 days left gives 40 days. Redeeming after it expires starts from today.
 
@@ -157,14 +154,16 @@ GET https://YOUR-URL/api/check?robloxUserId=123456
 To check a key (this is what the script's key prompt does):
 
 ```
-GET https://YOUR-URL/api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123456
+GET https://YOUR-URL/api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123456&session=SOME-ID&start=1
 ```
 
 ```json
 { "allowed": false, "reason": "wrong_account", "message": "This key is linked to a different Roblox account." }
 ```
 
-`reason` is one of `invalid_key`, `not_redeemed`, `no_license`, `revoked`, `expired`, `needs_roblox` or `wrong_account`. This route doesn't need `PUBLIC_API_TOKEN`, because the key itself is the secret.
+`reason` is one of `invalid_key`, `not_redeemed`, `no_license`, `revoked`, `expired`, `needs_roblox`, `wrong_account`, or `in_use` (the key is already running somewhere else right now). This route doesn't need `PUBLIC_API_TOKEN`, because the key itself is the secret.
+
+The script sends a unique `session` id (and `start=1` when it loads, `watch=1` on each check-in afterwards). That's how one key is held to one game at a time: while a session keeps checking in, a different session on the same key gets `in_use` and shuts down. The `session` is optional - a request without it (like the loader's first check) is never turned away for being in use.
 
 `/api/allowlist` still returns the old format, so a script that already reads it keeps working:
 

@@ -380,10 +380,6 @@ function renderLicenses() {
 				)
 				.join("");
 
-			if (license.pendingRobloxUsername) {
-				robloxCell += `<span class="muted sub">Verifying ${escapeHtml(license.pendingRobloxUsername)}</span>`;
-			}
-
 			if (!robloxCell) robloxCell = '<span class="muted">Not linked</span>';
 
 			const expires = license.expiresAt
@@ -413,7 +409,7 @@ function renderLicenses() {
 								${license.revoked ? "Unrevoke" : "Revoke"}
 							</button>
 							${
-								license.accounts.length > 1 || license.pendingRobloxUsername
+								license.accounts.length > 1
 									? '<button class="btn btn-quiet btn-small" data-action="reset">Unlink all</button>'
 									: ""
 							}
