@@ -11,6 +11,7 @@ const roblox = require("./src/roblox");
 const licenses = require("./src/licenses");
 const scripts = require("./src/script");
 const presence = require("./src/presence");
+const sessions = require("./src/sessions");
 const { HttpError, createRouter, readJsonBody, sendJson, redirect, sendStatic } = require("./src/http");
 
 const VIEWS = path.join(__dirname, "views");
@@ -226,50 +227,23 @@ router.post("/api/redeem", async (ctx) => {
 	return { license: userView(license, user), scriptKey: await licenses.scriptKeyFor(user.id) };
 });
 
-router.post("/api/roblox/start", async (ctx) => {
+// Link a Roblox account to the user's license by username. No profile phrase:
+// the key stays locked to whatever account is linked here.
+router.post("/api/roblox/link", async (ctx) => {
 	const user = requireUser(ctx);
 	rateLimit(`roblox:${user.id}`, 15, 60 * 1000);
 
 	const robloxUser = await roblox.findByUsername(ctx.body.username);
 	if (!robloxUser) throw new HttpError(404, "No Roblox account has that username.");
 
-	const license = await licenses.startRobloxLink(user.id, robloxUser, roblox.makePhrase(), { admin: isAdmin(user) });
+	const license = await licenses.linkRobloxAccount(user.id, robloxUser, { admin: isAdmin(user) });
 	return { license: userView(license, user) };
-});
-
-router.post("/api/roblox/verify", async (ctx) => {
-	const user = requireUser(ctx);
-	rateLimit(`roblox:${user.id}`, 15, 60 * 1000);
-
-	const license = await licenses.getByDiscord(user.id);
-	if (!license || !license.pending_roblox_user_id) {
-		throw new HttpError(400, "Start linking a Roblox account first.");
-	}
-
-	const profile = await roblox.getUser(license.pending_roblox_user_id);
-	if (!profile) throw new HttpError(404, "That Roblox account doesn't exist anymore.");
-
-	if (!roblox.containsPhrase(profile.description, license.pending_phrase)) {
-		throw new HttpError(
-			400,
-			"The phrase isn't in that account's About section yet. Save it on Roblox, wait a few seconds, then try again."
-		);
-	}
-
-	const updated = await licenses.completeRobloxLink(user.id, { id: profile.id, name: profile.name }, { admin: isAdmin(user) });
-	return { license: userView(updated, user) };
 });
 
 router.post("/api/roblox/remove", async (ctx) => {
 	const user = requireUser(ctx);
 	const license = await licenses.removeRobloxAccount(user.id, ctx.body.robloxUserId, { admin: isAdmin(user) });
 	return { license: userView(license, user) };
-});
-
-router.post("/api/roblox/cancel", async (ctx) => {
-	const user = requireUser(ctx);
-	await licenses.cancelRobloxLink(user.id);
-	return { license: userView(await licenses.getByDiscord(user.id), user) };
 });
 
 // ---------------------------------------------------------------------------
@@ -463,17 +437,28 @@ router.get("/api/check-key", async (ctx) => {
 	const { result, license, account } = await licenses.verifyKey(ctx.query.get("key"), robloxUserId);
 	if (!result.allowed) return result;
 
+	const isStart = ctx.query.get("start") === "1";
+	const isWatch = ctx.query.get("watch") === "1";
+
+	// One live run per key. The script sends a unique ?session= on start and every check-in.
+	// If someone's already running on this key, the newer run is turned away here.
+	const session = String(ctx.query.get("session") || "");
+	if (session && (isStart || isWatch)) {
+		const gate = sessions.check(license.id, robloxUserId, session);
+		if (!gate.ok) return { allowed: false, reason: "in_use", message: gate.message };
+	}
+
 	const game = gameFromQuery(ctx.query);
 	presence.seen(robloxUserId, game);
 
 	// The script says start=1 once, when it starts. That's what the Activity tab lists.
-	if (ctx.query.get("start") === "1") {
+	if (isStart) {
 		await licenses.logExecution({ license, account, ...game });
 	}
 
 	// While it runs, it checks in with watch=1 every 15 seconds. That's when a kick reaches it:
 	//   ->  { "allowed": true, "kick": true, "message": "You were kicked by an admin." }
-	if (ctx.query.get("watch") === "1") {
+	if (isWatch) {
 		const kick = presence.takeKick(robloxUserId);
 		if (kick) return { ...result, kick: true, message: kick.message };
 	}

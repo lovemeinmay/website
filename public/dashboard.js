@@ -65,14 +65,12 @@ function render() {
 	$("linkPanel").hidden = !showLink;
 	if (!showLink) return;
 
-	const pending = license.pending;
 	const accounts = license.accounts;
 	const unlimited = license.maxAccounts === null; // admins
 	const full = !unlimited && accounts.length >= license.maxAccounts;
 
-	$("linkVerify").hidden = !pending;
-	$("linkStart").hidden = !!pending || full;
-	$("linkFull").hidden = !!pending || !full;
+	$("linkStart").hidden = full;
+	$("linkFull").hidden = !full;
 
 	$("linkTitle").textContent = !accounts.length
 		? "Link your Roblox account"
@@ -107,11 +105,6 @@ function render() {
 			</li>`
 		)
 		.join("");
-
-	if (pending) {
-		$("pendingName").textContent = pending.username;
-		$("phrase").textContent = pending.phrase;
-	}
 }
 
 async function load() {
@@ -162,34 +155,19 @@ $("linkForm").addEventListener("submit", (event) => {
 
 	busy($("linkBtn"), async () => {
 		try {
-			const data = await api("POST", "/api/roblox/start", { username });
+			const data = await api("POST", "/api/roblox/link", { username });
 			me.license = data.license;
 			$("robloxInput").value = "";
 			render();
+			toast("Roblox account linked");
 		} catch (err) {
 			$("linkError").textContent = err.message;
 		}
 	});
 });
 
-$("copyPhrase").addEventListener("click", () => copyText($("phrase").textContent, $("copyPhrase")));
 $("copyScriptKey").addEventListener("click", () => copyText($("scriptKey").textContent, $("copyScriptKey")));
 $("copyLoader").addEventListener("click", () => copyText($("loaderLine").textContent, $("copyLoader")));
-
-$("verifyBtn").addEventListener("click", () => {
-	$("verifyError").textContent = "";
-
-	busy($("verifyBtn"), async () => {
-		try {
-			const data = await api("POST", "/api/roblox/verify");
-			me.license = data.license;
-			render();
-			toast("Roblox account linked");
-		} catch (err) {
-			$("verifyError").textContent = err.message;
-		}
-	});
-});
 
 $("accountList").addEventListener("click", (event) => {
 	const button = event.target.closest("button[data-remove]");
@@ -203,19 +181,6 @@ $("accountList").addEventListener("click", (event) => {
 			me.license = data.license;
 			render();
 			toast("Account removed");
-		} catch (err) {
-			toast(err.message, true);
-		}
-	});
-});
-
-$("cancelBtn").addEventListener("click", () => {
-	busy($("cancelBtn"), async () => {
-		try {
-			const data = await api("POST", "/api/roblox/cancel");
-			me.license = data.license;
-			$("verifyError").textContent = "";
-			render();
 		} catch (err) {
 			toast(err.message, true);
 		}
