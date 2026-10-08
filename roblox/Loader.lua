@@ -345,9 +345,25 @@ local function prompt(savedKey)
 		Parent = window,
 	})
 
-	local checkButton = make("TextButton", {
+	local getKeyButton = make("TextButton", {
 		Position = UDim2.fromOffset(18, 162),
-		Size = UDim2.new(1, -36, 0, 40),
+		Size = UDim2.new(0.5, -23, 0, 40),
+		BackgroundColor3 = COLORS.Background,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "Get Key",
+		TextSize = 14,
+		TextColor3 = COLORS.Font,
+		AutoButtonColor = false,
+		Parent = window,
+	})
+	corner(getKeyButton, 6)
+	stroke(getKeyButton)
+
+	local checkButton = make("TextButton", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -18, 0, 162),
+		Size = UDim2.new(0.5, -23, 0, 40),
 		BackgroundColor3 = COLORS.Accent,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
@@ -409,7 +425,7 @@ local function prompt(savedKey)
 		keyBox.Text = key
 
 		if key == "" then
-			return setStatus("Paste your key first.", COLORS.Error)
+			return setStatus("Paste your key first. Press Get Key if you don't have one.", COLORS.Error)
 		end
 
 		setBusy(true)
@@ -457,6 +473,14 @@ local function prompt(savedKey)
 		end
 	end)
 
+	getKeyButton.MouseEnter:Connect(function()
+		getKeyButton.TextColor3 = COLORS.Accent
+	end)
+
+	getKeyButton.MouseLeave:Connect(function()
+		getKeyButton.TextColor3 = COLORS.Font
+	end)
+
 	closeButton.MouseEnter:Connect(function()
 		closeButton.TextColor3 = COLORS.Accent
 	end)
@@ -468,6 +492,14 @@ local function prompt(savedKey)
 	-- Buttons.
 	checkButton.MouseButton1Click:Connect(submit)
 
+	getKeyButton.MouseButton1Click:Connect(function()
+		if setclipboard and pcall(setclipboard, SITE_URL) then
+			setStatus("Link copied. Open it in your browser, sign in, and copy your script key.", COLORS.Accent)
+		else
+			setStatus("Get your key at " .. SITE_URL, COLORS.Accent)
+		end
+	end)
+
 	closeButton.MouseButton1Click:Connect(function()
 		finish(false)
 	end)
@@ -476,7 +508,7 @@ local function prompt(savedKey)
 	if savedKey then
 		task.spawn(submit)
 	else
-		setStatus("Enter your key and press Check Key.", COLORS.Muted)
+		setStatus("Don't have a key? Press Get Key.", COLORS.Muted)
 	end
 
 	repeat
