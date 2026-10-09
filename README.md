@@ -1,4 +1,4 @@
-# RAIN License Server
+# Nya License Server
 
 A website that controls who can use your Roblox script.
 
@@ -74,7 +74,7 @@ Optional:
 
 | Key | Value |
 |---|---|
-| `SITE_NAME` | the name shown on the site and at the start of every key (default `RAIN`) |
+| `SITE_NAME` | the name shown on the site and at the start of every key (default `Nya`). Keys made before a rename keep working |
 | `PUBLIC_API_TOKEN` | a random string your script must send to read `/api/check` and `/api/allowlist` |
 | `PUBLIC_URL` | your site's address, used inside the loader (worked out from `DISCORD_REDIRECT_URI` if you leave it out) |
 | `MAX_ROBLOX_ACCOUNTS` | how many Roblox accounts one license can link (default `3`) |
@@ -89,7 +89,7 @@ Once Render shows your URL (like `https://rain-license.onrender.com`):
 1. Make sure `DISCORD_REDIRECT_URI` in Render is `https://YOUR-URL/auth/discord/callback`.
 2. In the Discord app, open **OAuth2 > Redirects** and add the exact same URL.
 
-When it's working, Render's logs end with `RAIN license server listening on port ...`, and you can sign in at `/admin`.
+When it's working, Render's logs end with `Nya license server listening on port ...`, and you can sign in at `/admin`.
 
 ## Using it
 
@@ -125,7 +125,7 @@ Players paste this into their executor (it's on their license page with a Copy b
 loadstring(game:HttpGet("https://YOUR-URL/loader.lua"))()
 ```
 
-1. The loader shows a key box. **Get Key** copies your site's address; **Check Key** checks the key with `/api/check-key`.
+1. The loader shows a key box with a **Check Key** button, which checks the key with `/api/check-key`. A key saved from last time is checked straight away.
 2. With a good key, it downloads the script from `/api/script` and runs it, passing the key in.
 3. It saves the key, so next time it goes straight through.
 4. When the script starts, it tells the site which game and server it's in (`placeId`, `jobId`, `game`, with `start=1`). That's what the Activity tab lists.
@@ -156,7 +156,7 @@ GET https://YOUR-URL/api/check?robloxUserId=123456
 To check a key (this is what the script's key prompt does):
 
 ```
-GET https://YOUR-URL/api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123456&session=SOME-ID&start=1
+GET https://YOUR-URL/api/check-key?key=NYA-XXXXX-XXXXX-XXXXX&robloxUserId=123456&session=SOME-ID&start=1
 ```
 
 ```json
