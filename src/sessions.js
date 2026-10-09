@@ -21,7 +21,8 @@ function prune() {
 
 // Decide whether this run may continue, and remember who's holding the license.
 // Returns { ok: true } to allow, or { ok: false, message } to kick/turn away.
-function check(licenseId, robloxUserId, sessionId) {
+// isStart is true when the script is starting (not a check-in from a run already going).
+function check(licenseId, robloxUserId, sessionId, { isStart = false } = {}) {
 	const id = Number(licenseId);
 	const now = Date.now();
 	const holder = active.get(id);
@@ -38,6 +39,15 @@ function check(licenseId, robloxUserId, sessionId) {
 	if (holder.sessionId === sessionId) {
 		holder.time = now;
 		holder.robloxUserId = Number(robloxUserId);
+		return { ok: true };
+	}
+
+	// The same Roblox account starting again (ran the script twice, rejoined, or hopped
+	// servers before the old run timed out): that's not someone else, so the new run
+	// takes over. One Roblox account can only be in one game at a time anyway. The old
+	// run, if it's somehow still checking in, is the one turned away from now on.
+	if (isStart && holder.robloxUserId === Number(robloxUserId)) {
+		active.set(id, { sessionId, robloxUserId: Number(robloxUserId), time: now });
 		return { ok: true };
 	}
 
