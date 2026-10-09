@@ -111,7 +111,7 @@ When it's working, Render's logs end with `Nya license server listening on port 
 - add or remove time, or make a license lifetime
 - see who's in a game with the script right now (**In game**), and which game
 - see every time the script was started, by whom, on which account, in which game and server (**Activity** tab, or **Activity** on a license for just theirs; kept 90 days)
-- link a Roblox account to any license straight away with **Add account** (just the username: no profile phrase, no limit)
+- link a Roblox account to any license straight away with **Add account** (just the username: no profile phrase, no limit). If that account is already on another license, it moves over (it's taken off the other one). The same goes for admins linking accounts on their own license page
 - unlink one Roblox account (the **×** next to it) or all of them (**Unlink all**)
 - **Kick** someone out of their game (you can give a reason they'll see). It kicks every account on their license that's in a game. Their license isn't touched, so they can rejoin
 - revoke a license (blocked, but kept on record) and unrevoke it
