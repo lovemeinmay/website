@@ -120,13 +120,35 @@ function checkApiToken(ctx) {
 // Pages
 // ---------------------------------------------------------------------------
 
-// Read a page from views/ (once) and fill in the site name.
+// Browsers keep /assets/ files for a few minutes. After an update that could pair a new page
+// with an old script (a new button that does nothing). Each asset link gets ?v=<hash of that
+// file>, so a changed file has a new address and is always fetched fresh.
+const assetVersions = new Map();
+
+function assetVersion(file) {
+	if (!assetVersions.has(file)) {
+		let version = "0";
+		try {
+			version = crypto.createHash("sha1").update(fs.readFileSync(path.join(PUBLIC, file))).digest("hex").slice(0, 10);
+		} catch {
+			// Missing file: leave the link as it is.
+		}
+		assetVersions.set(file, version);
+	}
+	return assetVersions.get(file);
+}
+
+// Read a page from views/ (once) and fill in the site name and asset versions.
 const viewCache = new Map();
 
 function sendView(res, name, status = 200) {
 	if (!viewCache.has(name)) {
 		const siteName = config.siteName.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-		viewCache.set(name, fs.readFileSync(path.join(VIEWS, name), "utf8").replaceAll("{{SITE_NAME}}", siteName));
+		const html = fs
+			.readFileSync(path.join(VIEWS, name), "utf8")
+			.replaceAll("{{SITE_NAME}}", siteName)
+			.replace(/(["'])\/assets\/([\w.\-]+\.(?:js|css))\1/g, (match, quote, file) => `${quote}/assets/${file}?v=${assetVersion(file)}${quote}`);
+		viewCache.set(name, html);
 	}
 
 	res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
