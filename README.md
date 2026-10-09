@@ -18,6 +18,7 @@ Licenses are tied to one Discord account, and up to 3 Roblox accounts (set `MAX_
 | `/dashboard` | Users | Redeem a key, link and remove Roblox accounts, see when their license ends |
 | `/admin` | You (and co-admins) | Make keys, manage every license, upload the script |
 | `/loader.lua` | Players' executors | The loader: asks for the key, then downloads and runs the script |
+| `/tracker.lua` | Players' executors | The Server Tracker loader: asks for a tracker key, then downloads and runs the tracker |
 | `/api/script?key=...&robloxUserId=123` | The loader | The script itself, only for a key that works on that Roblox account |
 | `/api/check-key?key=...&robloxUserId=123` | The script's key prompt | Answers `{ "allowed": true }`, or `{ "allowed": false, "message": "..." }` saying what's wrong |
 | `/api/check?robloxUserId=123` | Your Roblox script | Answers `{ "allowed": true }` or `{ "allowed": false }` |
@@ -136,6 +137,20 @@ A kick waits up to 2 minutes for the player's script to check in. Who's in a gam
 **Uploading the script:** open `/admin`, go to **Script**, choose your `.lua` file and press **Upload**. It replaces the script for everyone straight away, and **Download** gets back what's live. Files up to 15 MB work. The script is sent zipped to executors that can unzip it, which is most of them.
 
 The loader itself is `roblox/Loader.lua`. The site fills in its own address when it sends it, so you don't need to edit it.
+
+## The Server Tracker
+
+The site can also hand out a second script, the Server Tracker, with its own keys. Tracker keys are separate from license keys: a tracker key only unlocks the tracker, and a license key doesn't unlock it.
+
+1. Open `/admin`, go to **Tracker**, and upload the tracker file (for example `ServerTracker_obfuscated.lua`). It's stored in your database, like the main script.
+2. Paste your tracker keys into **Add tracker keys** (one per line) and press **Add keys**.
+3. Players run this in the Deepwoken main menu, then enter a tracker key:
+
+```
+loadstring(game:HttpGet("https://YOUR-URL/tracker.lua"))()
+```
+
+A tracker key works straight away, with no Discord sign-in. The first Roblox account to use it gets it, and after that it only works on that account. One Roblox account can only hold one tracker key. On the Tracker tab you can **Turn off** a key (and back on), **Unlink** it so another account can use it, or **Delete** it. The tracker loader is `roblox/TrackerLoader.lua`; it checks keys with `/api/tracker/check-key` and downloads from `/api/tracker/script`.
 
 ## The Roblox script (server-side check)
 
