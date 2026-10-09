@@ -650,6 +650,58 @@ select:focus {
 	grid-template-columns: 1fr auto;
 }
 
+.admin-form.import {
+	grid-template-columns: 180px 1fr auto;
+	margin-top: 16px;
+}
+
+.admin-form.import .import-keys {
+	grid-column: 1 / -1;
+}
+
+.admin-form.import .import-keys p {
+	margin: 6px 0 0;
+}
+
+textarea {
+	width: 100%;
+	min-height: 110px;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--night);
+	color: var(--mist);
+	font: 400 0.95rem var(--font-code);
+	resize: vertical;
+}
+
+textarea::placeholder {
+	color: #6b7085;
+}
+
+textarea:focus {
+	border-color: var(--pink);
+	outline: none;
+	box-shadow: 0 0 0 3px var(--pink-soft);
+}
+
+.form-ok {
+	min-height: 0;
+	margin: 8px 0 0;
+	color: #7ee3a0;
+	font-size: 0.9rem;
+}
+
+.form-ok:empty {
+	display: none;
+}
+
+@media (max-width: 760px) {
+	.admin-form.import {
+		grid-template-columns: 1fr;
+	}
+}
+
 input[type="file"] {
 	padding: 8px 12px;
 	cursor: pointer;

@@ -39,4 +39,17 @@ async function findByUsername(username) {
 	return match ? { id: Number(match.id), name: match.name, displayName: match.displayName } : null;
 }
 
-module.exports = { findByUsername };
+// Look up a Roblox username from a user ID. Best effort: gives back null if Roblox can't be reached.
+async function usernameFor(userId) {
+	try {
+		const response = await fetch(`${USERS_API}/users/${Number(userId)}`, { signal: AbortSignal.timeout(5000) });
+		if (!response.ok) return null;
+
+		const data = await response.json();
+		return data && typeof data.name === "string" ? data.name : null;
+	} catch {
+		return null;
+	}
+}
+
+module.exports = { findByUsername, usernameFor };

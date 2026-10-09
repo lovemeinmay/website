@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const db = require("./db");
 const config = require("./config");
 const { HttpError } = require("./http");
+const roblox = require("./roblox");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const KEY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // No 0/O, 1/I/L - easy to read and type.
@@ -148,7 +149,51 @@ async function listKeys() {
 		redeemedAt: row.redeemed_at,
 		redeemedBy: row.redeemed_by,
 		redeemedByUsername: row.redeemed_by_username,
+		inGame: !!row.claim_in_game,
 	}));
+}
+
+// Keys you already have (in any format like XXXX-XXXX-XXXX-XXXX) can be added in bulk.
+// They work straight away in the game: the first Roblox account to use one gets it,
+// and from then on it only works on that account. They can still be redeemed on the
+// website instead, like any other key, if nobody has used them in a game yet.
+const IMPORT_KEY_PATTERN = /^[A-Z0-9]{2,12}(?:-[A-Z0-9]{2,12}){1,5}$/;
+const MAX_IMPORT = 2000;
+
+async function importKeys({ keys, duration, note, createdBy }) {
+	const text = Array.isArray(keys) ? keys.join("\n") : String(keys || "");
+	const unique = [...new Set(text.split(/[\s,;]+/).map(normalizeKey).filter(Boolean))];
+
+	if (!unique.length) throw new HttpError(400, "Paste at least one key.");
+	if (unique.length > MAX_IMPORT) throw new HttpError(400, `You can add up to ${MAX_IMPORT} keys at a time.`);
+
+	const invalid = unique.filter((key) => !IMPORT_KEY_PATTERN.test(key));
+	const valid = unique.filter((key) => IMPORT_KEY_PATTERN.test(key));
+	const durationDays = parseDuration(duration);
+
+	// Skip keys that are already on the site.
+	const existing = new Set();
+	for (let i = 0; i < valid.length; i += 300) {
+		const chunk = valid.slice(i, i + 300);
+		const rows = await db.query(`SELECT key FROM license_keys WHERE key IN (${chunk.map(() => "?").join(",")})`, chunk);
+		rows.forEach((row) => existing.add(row.key));
+	}
+
+	const fresh = valid.filter((key) => !existing.has(key));
+	const createdAt = nowIso();
+	const noteText = note ? String(note).slice(0, 200) : null;
+
+	for (let i = 0; i < fresh.length; i += 200) {
+		await db.batch(
+			fresh.slice(i, i + 200).map((key) => ({
+				sql: `INSERT OR IGNORE INTO license_keys (key, duration_days, note, created_at, created_by, claim_in_game)
+					VALUES (?, ?, ?, ?, ?, 1)`,
+				args: [key, durationDays, noteText, createdAt, createdBy || null],
+			}))
+		);
+	}
+
+	return { added: fresh.length, alreadyAdded: existing.size, invalid };
 }
 
 async function deleteUnusedKey(id) {
@@ -493,7 +538,64 @@ const KEY_PROBLEMS = {
 	expired: "This license has expired. Redeem a new key on the website.",
 	needs_roblox: "Link your Roblox account on the website first.",
 	wrong_account: "This Roblox account isn't linked to your license. Add it on the website.",
+	locked: "This key is already being used by a different Roblox account.",
+	roblox_taken: "This Roblox account already has a license, so it can't take a new key. Use your existing key.",
 };
+
+// Licenses made by using a key in the game (no Discord) are owned by "key:<the key>".
+const IN_GAME_OWNER = "key:";
+
+// First use of an "Add your own keys" key in the game: make it a license locked to this Roblox account.
+// Gives back { owner } when the key now belongs to someone, or { problem } when it can't be claimed.
+async function claimInGame(keyRow, key, robloxUserId) {
+	const robloxId = Number(robloxUserId);
+	if (!Number.isSafeInteger(robloxId) || robloxId <= 0) return { problem: "invalid_key" };
+
+	if (await getByRoblox(robloxId)) return { problem: "roblox_taken" };
+
+	const owner = IN_GAME_OWNER + key;
+	const now = nowIso();
+
+	// Same trick as redeeming: only one claim can win.
+	const claim = await db.run(
+		"UPDATE license_keys SET redeemed_at = ?, redeemed_by = ? WHERE id = ? AND redeemed_at IS NULL",
+		[now, owner, keyRow.id]
+	);
+
+	if (!claim.changes) {
+		const row = await db.first("SELECT redeemed_by FROM license_keys WHERE id = ?", [keyRow.id]);
+		return { owner: row && row.redeemed_by };
+	}
+
+	const username = await roblox.usernameFor(robloxId);
+
+	try {
+		await db.batch([
+			{
+				sql: "INSERT INTO licenses (discord_id, discord_username, expires_at, note, created_at) VALUES (?, ?, ?, ?, ?)",
+				args: [
+					owner,
+					username ? `${username} (in game)` : "In game",
+					keyRow.duration_days ? addDays(now, keyRow.duration_days) : null,
+					keyRow.note || "Key used in game",
+					now,
+				],
+			},
+			{
+				sql: `INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at)
+					VALUES ((SELECT id FROM licenses WHERE discord_id = ?), ?, ?, ?)`,
+				args: [owner, robloxId, username, now],
+			},
+		]);
+	} catch (err) {
+		// Give the key back so it can be tried again.
+		await db.run("UPDATE license_keys SET redeemed_at = NULL, redeemed_by = NULL WHERE id = ?", [keyRow.id]);
+		if (db.isUniqueError(err)) return { problem: "roblox_taken" };
+		throw err;
+	}
+
+	return { owner };
+}
 
 function keyProblem(reason) {
 	return { allowed: false, reason, message: KEY_PROBLEMS[reason] };
@@ -507,18 +609,33 @@ async function verifyKey(key, robloxUserId) {
 	const normalized = normalizeKey(key);
 	if (!normalized) return { result: keyProblem("invalid_key") };
 
-	const keyRow = await db.first("SELECT redeemed_by FROM license_keys WHERE key = ?", [normalized]);
+	const keyRow = await db.first(
+		"SELECT id, redeemed_by, duration_days, note, claim_in_game FROM license_keys WHERE key = ?",
+		[normalized]
+	);
 	if (!keyRow) return { result: keyProblem("invalid_key") };
-	if (!keyRow.redeemed_by) return { result: keyProblem("not_redeemed") };
 
-	const license = await getByDiscord(keyRow.redeemed_by);
+	let owner = keyRow.redeemed_by;
+
+	if (!owner) {
+		if (!keyRow.claim_in_game) return { result: keyProblem("not_redeemed") };
+
+		const claimed = await claimInGame(keyRow, normalized, robloxUserId);
+		if (claimed.problem) return { result: keyProblem(claimed.problem) };
+		owner = claimed.owner;
+	}
+
+	const license = await getByDiscord(owner);
 	if (!license) return { result: keyProblem("no_license") };
 
 	const status = statusOf(license);
 	if (status !== "active") return { result: keyProblem(status), license };
 
 	const account = license.accounts.find((item) => item.roblox_user_id === Number(robloxUserId));
-	if (!account) return { result: keyProblem("wrong_account"), license };
+	if (!account) {
+		const inGame = String(license.discord_id).startsWith(IN_GAME_OWNER);
+		return { result: keyProblem(inGame ? "locked" : "wrong_account"), license };
+	}
 
 	return { result: { allowed: true, expiresAt: license.expires_at }, license, account };
 }
@@ -640,6 +757,7 @@ async function stats() {
 module.exports = {
 	forUser,
 	createKeys,
+	importKeys,
 	listKeys,
 	deleteUnusedKey,
 	getByDiscord,
