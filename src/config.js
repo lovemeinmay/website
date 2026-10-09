@@ -32,7 +32,7 @@ if (sessionSecret.length < 16) {
 	console.warn("SESSION_SECRET is not set - using a random one. You'll be logged out every time the server restarts.");
 }
 
-const siteName = env.SITE_NAME || "RAIN";
+const siteName = env.SITE_NAME || "Nya";
 
 // The site's own address (https://your-app.onrender.com), used in the loader script.
 // It's worked out from DISCORD_REDIRECT_URI, or you can set PUBLIC_URL yourself.

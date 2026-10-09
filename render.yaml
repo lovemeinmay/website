@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: SITE_NAME
-        value: RAIN
+        value: Nya
       - key: SESSION_SECRET
         generateValue: true
       - key: DISCORD_CLIENT_ID

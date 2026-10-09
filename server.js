@@ -445,7 +445,7 @@ router.get("/api/check", async (ctx) => {
 	return licenses.check(robloxUserId);
 });
 
-// GET /api/check-key?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123
+// GET /api/check-key?key=NYA-XXXXX-XXXXX-XXXXX&robloxUserId=123
 //   ->  { "allowed": true, "expiresAt": null }
 //   ->  { "allowed": false, "reason": "wrong_account", "message": "This key is linked to a different Roblox account." }
 // The key is the secret here, so this doesn't need PUBLIC_API_TOKEN
@@ -487,7 +487,7 @@ router.get("/api/check-key", async (ctx) => {
 	return result;
 });
 
-// GET /api/script?key=RAIN-XXXXX-XXXXX-XXXXX&robloxUserId=123
+// GET /api/script?key=NYA-XXXXX-XXXXX-XXXXX&robloxUserId=123
 //   ->  the script itself, but only for a key that works on that Roblox account
 //   ->  403 { "error": "This key is linked to a different Roblox account.", "reason": "wrong_account" }
 router.get("/api/script", async (ctx) => {
