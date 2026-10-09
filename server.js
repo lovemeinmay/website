@@ -555,7 +555,7 @@ router.get("/api/check-key", async (ctx) => {
 	// If someone's already running on this key, the newer run is turned away here.
 	const session = String(ctx.query.get("session") || "");
 	if (session && (isStart || isWatch)) {
-		const gate = sessions.check(license.id, robloxUserId, session);
+		const gate = sessions.check(license.id, robloxUserId, session, { isStart });
 		if (!gate.ok) return { allowed: false, reason: "in_use", message: gate.message };
 	}
 

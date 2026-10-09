@@ -100,7 +100,7 @@ When it's working, Render's logs end with `Nya license server listening on port 
 
 **Redeeming:** the user signs in at your site, pastes their key, then links the Roblox account they'll play on by typing its username (and up to 2 more the same way, if they play on alts). The key locks to the accounts linked here, so it only works when run on one of them.
 
-**One game at a time:** a key can only be running in one place at once. While someone's playing with it, anyone else who starts it on that key is turned away ("already being used right now"), and the script shuts down. A session frees up about 40 seconds after it stops checking in, so after closing the game or hopping servers there's a short wait before it can run again.
+**One game at a time:** a key can only be running in one place at once. While someone's playing with it, anyone else (another Roblox account) who starts it on that key is turned away ("already being used right now"), and the script shuts down. The same Roblox account starting again (running the script twice, rejoining, or hopping servers) simply takes over from its own old run, so there's no wait.
 
 **Timed keys stack:** redeeming a 30-day key on a license with 10 days left gives 40 days. Redeeming after it expires starts from today.
 
