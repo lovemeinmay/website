@@ -10,6 +10,7 @@ const discord = require("./src/discord");
 const roblox = require("./src/roblox");
 const licenses = require("./src/licenses");
 const scripts = require("./src/script");
+const tracker = require("./src/tracker");
 const presence = require("./src/presence");
 const sessions = require("./src/sessions");
 const { HttpError, createRouter, readJsonBody, sendJson, redirect, sendStatic } = require("./src/http");
@@ -17,10 +18,13 @@ const { HttpError, createRouter, readJsonBody, sendJson, redirect, sendStatic } 
 const VIEWS = path.join(__dirname, "views");
 const PUBLIC = path.join(__dirname, "public");
 const LOADER_FILE = path.join(__dirname, "roblox", "Loader.lua");
+const TRACKER_LOADER_FILE = path.join(__dirname, "roblox", "TrackerLoader.lua");
 
 // Script uploads go through the JSON body as base64, which is about 4/3 the file size.
 const UPLOAD_PATH = "/api/admin/script";
+const TRACKER_UPLOAD_PATH = "/api/admin/tracker/script";
 const IMPORT_PATH = "/api/admin/keys/import";
+const TRACKER_IMPORT_PATH = "/api/admin/tracker/keys/import";
 const MAX_IMPORT_BODY = 256 * 1024;
 const MAX_UPLOAD_BODY = Math.ceil((scripts.MAX_SCRIPT_BYTES * 4) / 3) + 64 * 1024;
 const router = createRouter();
@@ -154,6 +158,18 @@ router.get("/loader.lua", (ctx) => {
 
 	ctx.res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
 	ctx.res.end(loaderSource.replaceAll("{{SITE_URL}}", siteUrl(ctx)));
+});
+
+// The Server Tracker's loader:
+//   loadstring(game:HttpGet("https://YOUR-URL/tracker.lua"))()
+// It asks for a tracker key, then downloads the tracker from /api/tracker/script.
+let trackerLoaderSource = null;
+
+router.get("/tracker.lua", (ctx) => {
+	if (!trackerLoaderSource) trackerLoaderSource = fs.readFileSync(TRACKER_LOADER_FILE, "utf8");
+
+	ctx.res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+	ctx.res.end(trackerLoaderSource.replaceAll("{{SITE_URL}}", siteUrl(ctx)));
 });
 
 // ---------------------------------------------------------------------------
@@ -429,6 +445,58 @@ router.get("/api/admin/script/download", async (ctx) => {
 	ctx.res.end(script.source);
 });
 
+// Server Tracker: its keys and its script.
+router.get("/api/admin/tracker", async (ctx) => {
+	requireAdmin(ctx);
+
+	const [keys, script] = await Promise.all([tracker.listKeys(), scripts.tracker.info()]);
+	return { keys, script, loaderUrl: `${siteUrl(ctx)}/tracker.lua` };
+});
+
+router.post(TRACKER_IMPORT_PATH, async (ctx) => {
+	const admin = requireAdmin(ctx);
+	return tracker.importKeys({ keys: ctx.body.keys, note: ctx.body.note, createdBy: admin.id });
+});
+
+router.post("/api/admin/tracker/keys/:id", async (ctx) => {
+	requireAdmin(ctx);
+	return { key: await tracker.updateKey(ctx.params.id, { revoked: ctx.body.revoked, unlink: ctx.body.unlink === true }) };
+});
+
+router.delete("/api/admin/tracker/keys/:id", async (ctx) => {
+	requireAdmin(ctx);
+	await tracker.deleteKey(ctx.params.id);
+	return { ok: true };
+});
+
+router.post(TRACKER_UPLOAD_PATH, async (ctx) => {
+	const admin = requireAdmin(ctx);
+
+	const script = await scripts.tracker.upload({
+		base64: ctx.body.base64,
+		fileName: ctx.body.fileName,
+		uploadedBy: admin.username,
+	});
+
+	return { script };
+});
+
+router.get("/api/admin/tracker/script/download", async (ctx) => {
+	requireAdmin(ctx);
+
+	const script = await scripts.tracker.current();
+	if (!script) throw new HttpError(404, "No tracker has been uploaded yet.");
+
+	const fileName = (script.info.fileName || "tracker.lua").replace(/[^\w.\- ]/g, "_");
+
+	ctx.res.writeHead(200, {
+		"Content-Type": "text/plain; charset=utf-8",
+		"Content-Disposition": `attachment; filename="${fileName}"`,
+		"Cache-Control": "no-store",
+	});
+	ctx.res.end(script.source);
+});
+
 // ---------------------------------------------------------------------------
 // Public API - what the Roblox script calls
 // ---------------------------------------------------------------------------
@@ -516,6 +584,40 @@ router.get("/api/script", async (ctx) => {
 	ctx.res.end(gzip ? script.gzipped : script.source);
 });
 
+// GET /api/tracker/check-key?key=XXXX-XXXX-XXXX-XXXX&robloxUserId=123
+//   ->  { "allowed": true }
+//   ->  { "allowed": false, "reason": "locked", "message": "This tracker key is already being used by ..." }
+router.get("/api/tracker/check-key", async (ctx) => {
+	const robloxUserId = parseRobloxUserId(ctx.query.get("robloxUserId"));
+	rateLimit(`tracker-key:${robloxUserId}`, 20, 60 * 1000);
+
+	return tracker.checkKey(ctx.query.get("key"), robloxUserId);
+});
+
+// GET /api/tracker/script?key=XXXX-XXXX-XXXX-XXXX&robloxUserId=123  ->  the tracker, for a working key
+router.get("/api/tracker/script", async (ctx) => {
+	const robloxUserId = parseRobloxUserId(ctx.query.get("robloxUserId"));
+	rateLimit(`tracker-script:${robloxUserId}`, 10, 60 * 1000);
+
+	const result = await tracker.checkKey(ctx.query.get("key"), robloxUserId);
+	if (!result.allowed) {
+		return sendJson(ctx.res, 403, { error: result.message, reason: result.reason });
+	}
+
+	const script = await scripts.tracker.current();
+	if (!script) throw new HttpError(503, "The tracker hasn't been uploaded yet. Try again later.");
+
+	const gzip = /\bgzip\b/.test(String(ctx.req.headers["accept-encoding"] || ""));
+
+	ctx.res.writeHead(200, {
+		"Content-Type": "text/plain; charset=utf-8",
+		"Cache-Control": "no-store",
+		Vary: "Accept-Encoding",
+		...(gzip ? { "Content-Encoding": "gzip" } : {}),
+	});
+	ctx.res.end(gzip ? script.gzipped : script.source);
+});
+
 // GET /api/allowlist  ->  [ { "robloxUserId": 123, "robloxUsername": "...", "revoked": false } ]
 router.get("/api/allowlist", async (ctx) => {
 	checkApiToken(ctx);
@@ -554,7 +656,7 @@ async function handle(req, res) {
 		let maxBody;
 
 		// Script uploads are big, so only read one from an admin.
-		if (req.method === "POST" && url.pathname === UPLOAD_PATH) {
+		if (req.method === "POST" && (url.pathname === UPLOAD_PATH || url.pathname === TRACKER_UPLOAD_PATH)) {
 			if (!isAdmin(sessionData.user)) {
 				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
 			}
@@ -562,7 +664,7 @@ async function handle(req, res) {
 		}
 
 		// A big list of keys is bigger than a normal request, so allow more, for admins only.
-		if (req.method === "POST" && url.pathname === IMPORT_PATH) {
+		if (req.method === "POST" && (url.pathname === IMPORT_PATH || url.pathname === TRACKER_IMPORT_PATH)) {
 			if (!isAdmin(sessionData.user)) {
 				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
 			}

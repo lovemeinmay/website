@@ -21,6 +21,7 @@
 			<button class="tab" role="tab" id="tabLicenses" aria-selected="false" aria-controls="licensesTab">Licenses</button>
 			<button class="tab" role="tab" id="tabActivity" aria-selected="false" aria-controls="activityTab">Activity</button>
 			<button class="tab" role="tab" id="tabScript" aria-selected="false" aria-controls="scriptTab">Script</button>
+			<button class="tab" role="tab" id="tabTracker" aria-selected="false" aria-controls="trackerTab">Tracker</button>
 		</div>
 
 		<!-- Keys -->
@@ -227,6 +228,83 @@
 				<button class="btn btn-quiet btn-small" type="button" id="copyLoader">Copy</button>
 			</div>
 			<p class="muted script-help">Players paste this into their executor. It's also on every player's license page, next to their key.</p>
+		</section>
+
+		<!-- Server Tracker -->
+		<section id="trackerTab" role="tabpanel" aria-labelledby="tabTracker" hidden>
+			<p class="muted script-help" style="margin-top: 0">
+				The Server Tracker is a second script with its own keys. A tracker key only unlocks the tracker
+				(not the main script), works straight away with no sign-in, and locks to the first Roblox account that uses it.
+			</p>
+
+			<div class="script-card" id="trackerCard" data-state="loading">
+				<div>
+					<p class="script-state" id="trackerState">Loading</p>
+					<p class="muted" id="trackerMeta"></p>
+				</div>
+				<a class="btn btn-quiet btn-small" href="/api/admin/tracker/script/download" id="trackerDownload" hidden>Download</a>
+			</div>
+
+			<form class="admin-form upload" id="trackerScriptForm" novalidate>
+				<div>
+					<label for="trackerFile">Upload the tracker (.lua)</label>
+					<input id="trackerFile" type="file" accept=".lua,.luau,.txt,text/plain" />
+				</div>
+				<button class="btn" type="submit" id="trackerScriptBtn">Upload</button>
+			</form>
+			<p class="form-error" id="trackerScriptError" role="alert"></p>
+
+			<div class="toolbar">
+				<h2>What players run</h2>
+			</div>
+			<div class="copy-line">
+				<code id="trackerLoaderLine"></code>
+				<button class="btn btn-quiet btn-small" type="button" id="copyTrackerLoader">Copy</button>
+			</div>
+			<p class="muted script-help">Players paste this into their executor in the Deepwoken main menu, then enter their tracker key.</p>
+
+			<form class="admin-form import" id="trackerImportForm" novalidate>
+				<div class="import-keys">
+					<label for="trackerKeys">Add tracker keys</label>
+					<textarea id="trackerKeys" rows="5" spellcheck="false" autocomplete="off" placeholder="Paste keys, one per line, e.g.&#10;XXXX-XXXX-XXXX-XXXX"></textarea>
+				</div>
+				<div class="import-note">
+					<label for="trackerNote">Note (optional)</label>
+					<input id="trackerNote" maxlength="200" placeholder="e.g. Tracker batch 1" />
+				</div>
+				<button class="btn" type="submit" id="trackerImportBtn">Add keys</button>
+			</form>
+			<p class="form-error" id="trackerImportError" role="alert"></p>
+			<p class="form-ok" id="trackerImportResult" role="status"></p>
+
+			<div class="toolbar">
+				<h2 id="trackerKeysTitle">Tracker keys</h2>
+				<div class="button-row">
+					<select id="trackerFilter" aria-label="Show">
+						<option value="all">All keys</option>
+						<option value="unused">Unused</option>
+						<option value="used">In use</option>
+						<option value="revoked">Turned off</option>
+					</select>
+					<input id="trackerSearch" type="search" placeholder="Search keys, Roblox names, notes" aria-label="Search tracker keys" />
+				</div>
+			</div>
+
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Key</th>
+							<th>Roblox account</th>
+							<th>Note</th>
+							<th>Status</th>
+							<th>Last used</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody id="trackerRows"></tbody>
+				</table>
+			</div>
 		</section>
 
 		<section class="api-box">

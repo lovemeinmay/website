@@ -152,6 +152,49 @@ async function init() {
 			)`,
 			args: [],
 		},
+		{
+			// The Server Tracker script, stored the same way as the main script.
+			sql: `CREATE TABLE IF NOT EXISTS tracker_chunks (
+				version INTEGER NOT NULL,
+				idx INTEGER NOT NULL,
+				data BLOB NOT NULL,
+				PRIMARY KEY (version, idx)
+			)`,
+			args: [],
+		},
+		{
+			sql: `CREATE TABLE IF NOT EXISTS tracker_info (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				version INTEGER NOT NULL,
+				size INTEGER NOT NULL,
+				sha256 TEXT NOT NULL,
+				file_name TEXT,
+				uploaded_at TEXT NOT NULL,
+				uploaded_by TEXT
+			)`,
+			args: [],
+		},
+		{
+			// Keys for the Server Tracker. Separate from license keys: a tracker key only
+			// unlocks the tracker. It locks to the first Roblox account that uses it.
+			sql: `CREATE TABLE IF NOT EXISTS tracker_keys (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				key TEXT NOT NULL UNIQUE,
+				note TEXT,
+				created_at TEXT NOT NULL,
+				created_by TEXT,
+				roblox_user_id INTEGER,
+				roblox_username TEXT,
+				claimed_at TEXT,
+				last_used_at TEXT,
+				revoked INTEGER NOT NULL DEFAULT 0
+			)`,
+			args: [],
+		},
+		{
+			sql: "CREATE INDEX IF NOT EXISTS tracker_keys_by_roblox ON tracker_keys (roblox_user_id)",
+			args: [],
+		},
 	]);
 
 	// Databases made before claim_in_game existed get the column added here.

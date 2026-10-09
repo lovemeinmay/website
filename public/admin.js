@@ -46,6 +46,7 @@ const TABS = {
 	licenses: ["tabLicenses", "licensesTab"],
 	activity: ["tabActivity", "activityTab"],
 	script: ["tabScript", "scriptTab"],
+	tracker: ["tabTracker", "trackerTab"],
 };
 
 function showTab(name) {
@@ -62,6 +63,13 @@ function showTab(name) {
 			$("scriptMeta").textContent = err.message;
 		});
 	}
+
+	if (name === "tracker") {
+		loadTracker().catch((err) => {
+			$("trackerState").textContent = "Couldn't load";
+			$("trackerMeta").textContent = err.message;
+		});
+	}
 }
 
 $("tabKeys").addEventListener("click", () => showTab("keys"));
@@ -71,6 +79,7 @@ $("tabActivity").addEventListener("click", () => {
 	showTab("activity");
 });
 $("tabScript").addEventListener("click", () => showTab("script"));
+$("tabTracker").addEventListener("click", () => showTab("tracker"));
 
 // ---------------------------------------------------------------------------
 // Activity
@@ -576,6 +585,194 @@ $("licenseRows").addEventListener("click", async (event) => {
 		}
 
 		await load();
+	} catch (err) {
+		toast(err.message, true);
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Server Tracker
+// ---------------------------------------------------------------------------
+
+let trackerKeys = [];
+
+function renderTrackerScript(script) {
+	$("trackerCard").dataset.state = script ? "live" : "empty";
+	$("trackerDownload").hidden = !script;
+
+	if (!script) {
+		$("trackerState").textContent = "No tracker uploaded yet";
+		$("trackerMeta").textContent = "Players can enter a tracker key, but there's nothing to load until you upload one.";
+		return;
+	}
+
+	$("trackerState").textContent = script.fileName || "Server Tracker";
+	$("trackerMeta").textContent = `Live · ${formatBytes(script.size)} · uploaded ${formatDate(script.uploadedAt)}${
+		script.uploadedBy ? ` by ${script.uploadedBy}` : ""
+	}`;
+}
+
+function renderTrackerKeys() {
+	const filter = $("trackerFilter").value;
+	const search = $("trackerSearch").value.trim().toLowerCase();
+	const used = trackerKeys.filter((key) => key.robloxUserId && !key.revoked).length;
+
+	$("trackerKeysTitle").textContent = `Tracker keys (${trackerKeys.length}, ${used} in use)`;
+
+	const rows = trackerKeys.filter((key) => {
+		if (filter === "unused" && (key.robloxUserId || key.revoked)) return false;
+		if (filter === "used" && (!key.robloxUserId || key.revoked)) return false;
+		if (filter === "revoked" && !key.revoked) return false;
+		if (search && !`${key.key} ${key.note || ""} ${key.robloxUsername || ""} ${key.robloxUserId || ""}`.toLowerCase().includes(search)) {
+			return false;
+		}
+		return true;
+	});
+
+	if (!rows.length) {
+		$("trackerRows").innerHTML = `<tr><td colspan="6" class="empty">${
+			trackerKeys.length ? "No tracker keys match." : "No tracker keys yet. Add some above."
+		}</td></tr>`;
+		return;
+	}
+
+	$("trackerRows").innerHTML = rows
+		.map((key) => {
+			const account = key.robloxUserId
+				? `${escapeHtml(key.robloxUsername || "Roblox user")}<span class="sub code">${escapeHtml(String(key.robloxUserId))}</span>`
+				: '<span class="muted">Nobody yet</span>';
+
+			const status = key.revoked
+				? '<span class="pill pill-revoked">Off</span>'
+				: key.robloxUserId
+				  ? '<span class="pill pill-used">In use</span>'
+				  : '<span class="pill pill-unused">Unused</span>';
+
+			return `
+				<tr data-id="${key.id}" data-key="${escapeHtml(key.key)}">
+					<td data-label="Key"><span class="code">${escapeHtml(key.key)}</span></td>
+					<td data-label="Roblox">${account}</td>
+					<td data-label="Note">${escapeHtml(key.note || "")}</td>
+					<td data-label="Status">${status}</td>
+					<td data-label="Last used" class="muted">${key.lastUsedAt ? escapeHtml(formatDate(key.lastUsedAt)) : ""}</td>
+					<td data-label="">
+						<div class="row-actions">
+							<button class="btn btn-quiet btn-small" data-action="copy">Copy</button>
+							${key.robloxUserId ? '<button class="btn btn-quiet btn-small" data-action="unlink">Unlink</button>' : ""}
+							${
+								key.revoked
+									? '<button class="btn btn-quiet btn-small" data-action="on">Turn on</button>'
+									: '<button class="btn btn-quiet btn-small" data-action="off">Turn off</button>'
+							}
+							<button class="btn btn-danger btn-small" data-action="delete">Delete</button>
+						</div>
+					</td>
+				</tr>`;
+		})
+		.join("");
+}
+
+async function loadTracker() {
+	const result = await api("GET", "/api/admin/tracker");
+	trackerKeys = result.keys;
+	renderTrackerScript(result.script);
+	renderTrackerKeys();
+	$("trackerLoaderLine").textContent = `loadstring(game:HttpGet("${result.loaderUrl}"))()`;
+}
+
+$("trackerFilter").addEventListener("change", renderTrackerKeys);
+$("trackerSearch").addEventListener("input", renderTrackerKeys);
+$("copyTrackerLoader").addEventListener("click", () => copyText($("trackerLoaderLine").textContent, $("copyTrackerLoader")));
+
+$("trackerScriptForm").addEventListener("submit", (event) => {
+	event.preventDefault();
+	$("trackerScriptError").textContent = "";
+
+	const file = $("trackerFile").files[0];
+	if (!file) {
+		$("trackerScriptError").textContent = "Choose a .lua file first.";
+		return;
+	}
+	if (file.size > MAX_SCRIPT_BYTES) {
+		$("trackerScriptError").textContent = "That file is bigger than 15 MB.";
+		return;
+	}
+
+	busy($("trackerScriptBtn"), async () => {
+		const label = $("trackerScriptBtn").textContent;
+		$("trackerScriptBtn").textContent = "Uploading...";
+
+		try {
+			const result = await api("POST", "/api/admin/tracker/script", { base64: await readAsBase64(file), fileName: file.name });
+			renderTrackerScript(result.script);
+			$("trackerFile").value = "";
+			toast("Tracker uploaded. Players get it on their next load.");
+		} catch (err) {
+			$("trackerScriptError").textContent = err.message;
+		} finally {
+			$("trackerScriptBtn").textContent = label;
+		}
+	});
+});
+
+$("trackerImportForm").addEventListener("submit", (event) => {
+	event.preventDefault();
+	$("trackerImportError").textContent = "";
+	$("trackerImportResult").textContent = "";
+
+	const keys = $("trackerKeys").value.trim();
+	if (!keys) {
+		$("trackerImportError").textContent = "Paste some keys first.";
+		return;
+	}
+
+	busy($("trackerImportBtn"), async () => {
+		try {
+			const result = await api("POST", "/api/admin/tracker/keys/import", { keys, note: $("trackerNote").value.trim() });
+
+			const parts = [`Added ${result.added} tracker key${result.added === 1 ? "" : "s"}.`];
+			if (result.alreadyAdded) parts.push(`${result.alreadyAdded} were already added.`);
+			$("trackerImportResult").textContent = parts.join(" ");
+
+			if (result.invalid.length) {
+				const shown = result.invalid.slice(0, 5).join(", ");
+				$("trackerImportError").textContent = `Skipped ${result.invalid.length} that don't look like keys: ${shown}${
+					result.invalid.length > 5 ? ", ..." : ""
+				}`;
+			}
+
+			$("trackerKeys").value = "";
+			$("trackerNote").value = "";
+			await loadTracker();
+		} catch (err) {
+			$("trackerImportError").textContent = err.message;
+		}
+	});
+});
+
+$("trackerRows").addEventListener("click", async (event) => {
+	const button = event.target.closest("button[data-action]");
+	if (!button) return;
+
+	const row = button.closest("tr");
+	const action = button.dataset.action;
+
+	if (action === "copy") return copyText(row.dataset.key, button);
+
+	if (action === "delete" && !confirm(`Delete tracker key ${row.dataset.key}? It stops working straight away.`)) return;
+	if (action === "unlink" && !confirm(`Unlink ${row.dataset.key} from its Roblox account? The next account to use it gets it.`)) return;
+
+	try {
+		if (action === "delete") {
+			await api("DELETE", `/api/admin/tracker/keys/${row.dataset.id}`);
+			toast("Tracker key deleted");
+		} else {
+			const body = action === "unlink" ? { unlink: true } : { revoked: action === "off" };
+			await api("POST", `/api/admin/tracker/keys/${row.dataset.id}`, body);
+			toast(action === "unlink" ? "Key unlinked" : action === "off" ? "Key turned off" : "Key turned on");
+		}
+
+		await loadTracker();
 	} catch (err) {
 		toast(err.message, true);
 	}
