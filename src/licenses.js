@@ -310,6 +310,27 @@ async function redeemKey({ key, discordId, discordUsername }) {
 
 // Link a Roblox account to the user's own license by username. No ownership proof:
 // the key just locks to whatever account is linked here.
+// Link a Roblox account to a license, moving it off any other license it's on.
+// Only admins get to do this. Both steps happen together, so the account is never
+// left on two licenses or on none. Gives back the name of the license it came from.
+async function linkMovingFromOtherLicense(license, robloxUser) {
+	const previous = await getByRoblox(robloxUser.id);
+	const movedFrom = previous && previous.id !== license.id ? previous.discord_username || previous.discord_id : null;
+
+	await db.batch([
+		{
+			sql: "DELETE FROM roblox_accounts WHERE roblox_user_id = ? AND license_id != ?",
+			args: [robloxUser.id, license.id],
+		},
+		{
+			sql: "INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)",
+			args: [license.id, robloxUser.id, robloxUser.name, nowIso()],
+		},
+	]);
+
+	return movedFrom;
+}
+
 async function linkRobloxAccount(discordId, robloxUser, { admin = false } = {}) {
 	const license = await getByDiscord(discordId);
 	if (!license) throw new HttpError(400, "Redeem a license key first.");
@@ -324,6 +345,12 @@ async function linkRobloxAccount(discordId, robloxUser, { admin = false } = {}) 
 			400,
 			`You've linked ${config.maxRobloxAccounts} accounts, which is the most a license can have. Remove one to add another.`
 		);
+	}
+
+	// Admins can link an account that's on someone else's license: it moves to theirs.
+	if (admin) {
+		await linkMovingFromOtherLicense(license, robloxUser);
+		return getByDiscord(discordId);
 	}
 
 	const owner = await getByRoblox(robloxUser.id);
@@ -473,21 +500,10 @@ async function addAccount(id, robloxUser) {
 		throw new HttpError(400, `${robloxUser.name} is already linked to this license.`);
 	}
 
-	try {
-		await db.run("INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)", [
-			license.id,
-			robloxUser.id,
-			robloxUser.name,
-			nowIso(),
-		]);
-	} catch (err) {
-		if (db.isUniqueError(err)) {
-			throw new HttpError(409, `${robloxUser.name} is already linked to someone else's license. Unlink it there first.`);
-		}
-		throw err;
-	}
+	// Already on another license? Move it here (admins only reach this).
+	const movedFrom = await linkMovingFromOtherLicense(license, robloxUser);
 
-	return forAdmin(await getById(license.id));
+	return { ...forAdmin(await getById(license.id)), movedFrom };
 }
 
 // Unlink one Roblox account from a license (admin, no waiting).
