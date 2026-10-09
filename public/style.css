@@ -278,32 +278,35 @@ select:focus {
 	padding: 48px 16px;
 }
 
-.rain {
+.paws {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 	overflow: hidden;
 }
 
-.rain i {
+.paws i {
 	position: absolute;
-	top: -20vh;
-	width: 1.5px;
-	border-radius: 2px;
-	background: linear-gradient(to bottom, transparent, rgba(255, 105, 180, 0.55));
-	animation: fall linear infinite;
+	top: -10vh;
+	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='%23ff69b4'%3E%3Cellipse cx='16' cy='21.5' rx='7.5' ry='6.5'/%3E%3Cellipse cx='7' cy='13' rx='3' ry='3.8'/%3E%3Cellipse cx='12.5' cy='7.5' rx='3' ry='3.8'/%3E%3Cellipse cx='19.5' cy='7.5' rx='3' ry='3.8'/%3E%3Cellipse cx='25' cy='13' rx='3' ry='3.8'/%3E%3C/svg%3E") center / contain no-repeat;
+	transform: rotate(var(--spin, 0deg));
+	animation: drift linear infinite;
 }
 
-@keyframes fall {
+@keyframes drift {
+	from {
+		transform: translateY(0) rotate(var(--spin, 0deg));
+	}
+
 	to {
-		transform: translateY(140vh);
+		transform: translateY(125vh) rotate(calc(var(--spin, 0deg) + 25deg));
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.rain i {
+	.paws i {
+		top: var(--y, 50vh);
 		animation: none;
-		opacity: 0.35;
 	}
 }
 

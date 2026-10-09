@@ -1,17 +1,20 @@
-// Rain behind the wordmark: thin streaks at random spots, lengths and speeds.
-(function makeRain() {
-	const rain = document.getElementById("rain");
-	const count = window.innerWidth < 640 ? 28 : 60;
+// Little pink paw prints drifting down behind the wordmark, at random spots, sizes, speeds and angles.
+(function makePaws() {
+	const paws = document.getElementById("paws");
+	const count = window.innerWidth < 640 ? 14 : 30;
 
 	for (let i = 0; i < count; i++) {
-		const drop = document.createElement("i");
-		drop.style.left = `${Math.random() * 100}%`;
-		drop.style.height = `${40 + Math.random() * 90}px`;
-		drop.style.opacity = (0.25 + Math.random() * 0.6).toFixed(2);
-		drop.style.animationDuration = `${1.1 + Math.random() * 1.6}s`;
-		drop.style.animationDelay = `${-Math.random() * 3}s`;
-		drop.style.top = `${-20 + Math.random() * 100}vh`;
-		rain.appendChild(drop);
+		const paw = document.createElement("i");
+		const size = 12 + Math.random() * 16;
+		paw.style.left = `${Math.random() * 100}%`;
+		paw.style.width = `${size}px`;
+		paw.style.height = `${size}px`;
+		paw.style.opacity = (0.18 + Math.random() * 0.45).toFixed(2);
+		paw.style.setProperty("--spin", `${-40 + Math.random() * 80}deg`);
+		paw.style.setProperty("--y", `${Math.random() * 95}vh`);
+		paw.style.animationDuration = `${9 + Math.random() * 9}s`;
+		paw.style.animationDelay = `${-Math.random() * 18}s`;
+		paws.appendChild(paw);
 	}
 })();
 
