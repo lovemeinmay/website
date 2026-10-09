@@ -39,7 +39,7 @@ You need three free accounts: Discord (developer app), Turso (database) and Rend
 ### 2. Turso database
 
 1. Sign up at <https://turso.tech> (free, no card).
-2. Create a database (any name, e.g. `rain-licenses`).
+2. Create a database (any name, e.g. `nya-licenses`).
 3. Copy its URL (it starts with `libsql://`).
 4. Create a token for the database and copy it.
 
@@ -74,7 +74,7 @@ Optional:
 
 | Key | Value |
 |---|---|
-| `SITE_NAME` | the name shown on the site and at the start of every key (default `Nya`). Keys made before a rename keep working |
+| `SITE_NAME` | the name shown on the site and at the start of every key (default `Nya`; the old value `RAIN` is ignored). Keys made before a rename keep working |
 | `PUBLIC_API_TOKEN` | a random string your script must send to read `/api/check` and `/api/allowlist` |
 | `PUBLIC_URL` | your site's address, used inside the loader (worked out from `DISCORD_REDIRECT_URI` if you leave it out) |
 | `MAX_ROBLOX_ACCOUNTS` | how many Roblox accounts one license can link (default `3`) |
@@ -84,7 +84,7 @@ Prefer clicking less? This repo includes `render.yaml`, so **New > Blueprint** s
 
 ### 4. Finish the Discord redirect
 
-Once Render shows your URL (like `https://rain-license.onrender.com`):
+Once Render shows your URL (like `https://nya-license.onrender.com`):
 
 1. Make sure `DISCORD_REDIRECT_URI` in Render is `https://YOUR-URL/auth/discord/callback`.
 2. In the Discord app, open **OAuth2 > Redirects** and add the exact same URL.

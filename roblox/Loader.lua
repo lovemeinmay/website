@@ -17,7 +17,7 @@ local SITE_URL = "{{SITE_URL}}"
 local KEY_FOLDER = "Nya"
 local KEY_FILE = KEY_FOLDER .. "/key.txt"
 
--- Where keys were saved before the rename, so nobody has to type theirs again.
+-- Where keys were saved under the old name, so nobody has to type theirs again.
 local OLD_KEY_FILE = "Rain/key.txt"
 
 -- Render's free plan sleeps when nobody has visited for a while, and the first
@@ -309,8 +309,8 @@ end
 ---@return string? key
 local function prompt(savedKey)
 	-- Only ever one key window. If one is already open (the script was run twice), close it.
-	if type(shared.RainKeyPromptClose) == "function" then
-		pcall(shared.RainKeyPromptClose)
+	if type(shared.NyaKeyPromptClose) == "function" then
+		pcall(shared.NyaKeyPromptClose)
 	end
 
 	local result = nil
@@ -621,8 +621,8 @@ local function prompt(savedKey)
 
 		result = value
 
-		if shared.RainKeyPromptClose == closeSelf then
-			shared.RainKeyPromptClose = nil
+		if shared.NyaKeyPromptClose == closeSelf then
+			shared.NyaKeyPromptClose = nil
 		end
 
 		for _, connection in next, connections do
@@ -643,7 +643,7 @@ local function prompt(savedKey)
 	closeSelf = function()
 		finish(false)
 	end
-	shared.RainKeyPromptClose = closeSelf
+	shared.NyaKeyPromptClose = closeSelf
 
 	local function submit()
 		if busy or result ~= nil then
