@@ -95,6 +95,8 @@ When it's working, Render's logs end with `RAIN license server listening on port
 
 **Making keys:** open `/admin`, choose how many keys and how much time each gives (lifetime or a number of days), and click **Make keys**. Copy them and send them to people.
 
+**Adding your own keys:** already have keys (any format, like `XXXX-XXXX-XXXX-XXXX`)? Paste them into **Add your own keys** on the Keys tab, one per line, and press **Add keys**. They work straight away in the loader with no Discord sign-in: the first Roblox account to use one gets it, and after that it only works on that account (anyone else is told it's in use by a different account). A Roblox account that already has a license can't take a second key. Unused ones can still be redeemed on the website instead, like any other key. Keys used this way show up under **Licenses** as "(in game)".
+
 **Redeeming:** the user signs in at your site, pastes their key, then links the Roblox account they'll play on by typing its username (and up to 2 more the same way, if they play on alts). The key locks to the accounts linked here, so it only works when run on one of them.
 
 **One game at a time:** a key can only be running in one place at once. While someone's playing with it, anyone else who starts it on that key is turned away ("already being used right now"), and the script shuts down. A session frees up about 40 seconds after it stops checking in, so after closing the game or hopping servers there's a short wait before it can run again.

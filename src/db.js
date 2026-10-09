@@ -58,7 +58,10 @@ async function init() {
 				created_at TEXT NOT NULL,
 				created_by TEXT,
 				redeemed_at TEXT,
-				redeemed_by TEXT
+				redeemed_by TEXT,
+				-- 1 for keys added with "Add your own keys": they work straight away in the
+				-- game and lock to the first Roblox account that uses them.
+				claim_in_game INTEGER NOT NULL DEFAULT 0
 			)`,
 			args: [],
 		},
@@ -150,6 +153,13 @@ async function init() {
 			args: [],
 		},
 	]);
+
+	// Databases made before claim_in_game existed get the column added here.
+	try {
+		await run("ALTER TABLE license_keys ADD COLUMN claim_in_game INTEGER NOT NULL DEFAULT 0");
+	} catch (err) {
+		if (!/duplicate column/i.test(String(err && err.message))) throw err;
+	}
 }
 
 module.exports = { init, query, first, run, batch, isUniqueError };

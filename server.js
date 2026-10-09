@@ -20,6 +20,8 @@ const LOADER_FILE = path.join(__dirname, "roblox", "Loader.lua");
 
 // Script uploads go through the JSON body as base64, which is about 4/3 the file size.
 const UPLOAD_PATH = "/api/admin/script";
+const IMPORT_PATH = "/api/admin/keys/import";
+const MAX_IMPORT_BODY = 256 * 1024;
 const MAX_UPLOAD_BODY = Math.ceil((scripts.MAX_SCRIPT_BYTES * 4) / 3) + 64 * 1024;
 const router = createRouter();
 
@@ -296,6 +298,18 @@ router.post("/api/admin/keys", async (ctx) => {
 	return { keys };
 });
 
+// Add keys you already have (one per line, or separated by spaces or commas).
+router.post(IMPORT_PATH, async (ctx) => {
+	const admin = requireAdmin(ctx);
+
+	return licenses.importKeys({
+		keys: ctx.body.keys,
+		duration: ctx.body.duration,
+		note: ctx.body.note,
+		createdBy: admin.id,
+	});
+});
+
 router.delete("/api/admin/keys/:id", async (ctx) => {
 	requireAdmin(ctx);
 	await licenses.deleteUnusedKey(ctx.params.id);
@@ -545,6 +559,14 @@ async function handle(req, res) {
 				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
 			}
 			maxBody = MAX_UPLOAD_BODY;
+		}
+
+		// A big list of keys is bigger than a normal request, so allow more, for admins only.
+		if (req.method === "POST" && url.pathname === IMPORT_PATH) {
+			if (!isAdmin(sessionData.user)) {
+				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
+			}
+			maxBody = MAX_IMPORT_BODY;
 		}
 
 		const ctx = {

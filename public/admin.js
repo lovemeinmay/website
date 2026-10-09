@@ -261,7 +261,9 @@ function renderKeys() {
 			return `
 				<tr data-id="${key.id}" data-key="${escapeHtml(key.key)}">
 					<td data-label="Key"><span class="code">${escapeHtml(key.key)}</span></td>
-					<td data-label="Gives">${escapeHtml(durationLabel(key.durationDays))}</td>
+					<td data-label="Gives">${escapeHtml(durationLabel(key.durationDays))}${
+						key.inGame ? '<span class="sub">Works in game</span>' : ""
+					}</td>
 					<td data-label="Note">${escapeHtml(key.note || "")}</td>
 					<td data-label="Status">${status}</td>
 					<td data-label="Created" class="muted">${escapeHtml(formatDay(key.createdAt))}</td>
@@ -303,6 +305,45 @@ $("keyForm").addEventListener("submit", (event) => {
 });
 
 $("copyNewKeys").addEventListener("click", () => copyText($("newKeysList").textContent, $("copyNewKeys")));
+
+$("importForm").addEventListener("submit", (event) => {
+	event.preventDefault();
+	$("importError").textContent = "";
+	$("importResult").textContent = "";
+
+	const keys = $("importKeys").value.trim();
+	if (!keys) {
+		$("importError").textContent = "Paste some keys first.";
+		return;
+	}
+
+	busy($("importBtn"), async () => {
+		try {
+			const result = await api("POST", "/api/admin/keys/import", {
+				keys,
+				duration: $("importDuration").value,
+				note: $("importNote").value.trim(),
+			});
+
+			const parts = [`Added ${result.added} key${result.added === 1 ? "" : "s"}.`];
+			if (result.alreadyAdded) parts.push(`${result.alreadyAdded} were already on the site.`);
+			$("importResult").textContent = parts.join(" ");
+
+			if (result.invalid.length) {
+				const shown = result.invalid.slice(0, 5).join(", ");
+				$("importError").textContent = `Skipped ${result.invalid.length} that don't look like keys: ${shown}${
+					result.invalid.length > 5 ? ", ..." : ""
+				}`;
+			}
+
+			$("importKeys").value = "";
+			$("importNote").value = "";
+			await load();
+		} catch (err) {
+			$("importError").textContent = err.message;
+		}
+	});
+});
 
 $("keyRows").addEventListener("click", async (event) => {
 	const button = event.target.closest("button[data-action]");
