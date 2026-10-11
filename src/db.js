@@ -86,12 +86,15 @@ async function init() {
 		},
 		{
 			// Roblox accounts linked to a license (a license can have several).
+			// A Roblox account is on one license for players; admins can put one account on
+			// several licenses. It can't be on the same license twice.
 			sql: `CREATE TABLE IF NOT EXISTS roblox_accounts (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				license_id INTEGER NOT NULL,
-				roblox_user_id INTEGER NOT NULL UNIQUE,
+				roblox_user_id INTEGER NOT NULL,
 				roblox_username TEXT,
-				linked_at TEXT NOT NULL
+				linked_at TEXT NOT NULL,
+				UNIQUE (license_id, roblox_user_id)
 			)`,
 			args: [],
 		},
@@ -196,6 +199,35 @@ async function init() {
 			args: [],
 		},
 	]);
+
+	// Databases made when a Roblox account could only be on one license: rebuild the table
+	// without that rule (keeping every row), so admins can share an account across licenses.
+	const accountsTable = await first("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'roblox_accounts'");
+	if (accountsTable && /roblox_user_id\s+INTEGER\s+NOT\s+NULL\s+UNIQUE/i.test(String(accountsTable.sql))) {
+		await batch([
+			{
+				sql: `CREATE TABLE roblox_accounts_new (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					license_id INTEGER NOT NULL,
+					roblox_user_id INTEGER NOT NULL,
+					roblox_username TEXT,
+					linked_at TEXT NOT NULL,
+					UNIQUE (license_id, roblox_user_id)
+				)`,
+				args: [],
+			},
+			{
+				sql: `INSERT INTO roblox_accounts_new (id, license_id, roblox_user_id, roblox_username, linked_at)
+					SELECT id, license_id, roblox_user_id, roblox_username, linked_at FROM roblox_accounts`,
+				args: [],
+			},
+			{ sql: "DROP TABLE roblox_accounts", args: [] },
+			{ sql: "ALTER TABLE roblox_accounts_new RENAME TO roblox_accounts", args: [] },
+			{ sql: "CREATE INDEX IF NOT EXISTS roblox_accounts_by_license ON roblox_accounts (license_id)", args: [] },
+		]);
+	}
+
+	await run("CREATE INDEX IF NOT EXISTS roblox_accounts_by_roblox ON roblox_accounts (roblox_user_id)");
 
 	// Databases made before claim_in_game existed get the column added here.
 	try {
