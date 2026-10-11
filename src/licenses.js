@@ -310,25 +310,35 @@ async function redeemKey({ key, discordId, discordUsername }) {
 
 // Link a Roblox account to the user's own license by username. No ownership proof:
 // the key just locks to whatever account is linked here.
-// Link a Roblox account to a license, moving it off any other license it's on.
-// Only admins get to do this. Both steps happen together, so the account is never
-// left on two licenses or on none. Gives back the name of the license it came from.
-async function linkMovingFromOtherLicense(license, robloxUser) {
-	const previous = await getByRoblox(robloxUser.id);
-	const movedFrom = previous && previous.id !== license.id ? previous.discord_username || previous.discord_id : null;
+// Every license a Roblox account is linked to (admins can put one account on several).
+async function getAllByRoblox(robloxUserId) {
+	return withAccounts(
+		await db.query(
+			"SELECT l.* FROM licenses l JOIN roblox_accounts a ON a.license_id = l.id WHERE a.roblox_user_id = ? ORDER BY l.id",
+			[Number(robloxUserId)]
+		)
+	);
+}
 
-	await db.batch([
-		{
-			sql: "DELETE FROM roblox_accounts WHERE roblox_user_id = ? AND license_id != ?",
-			args: [robloxUser.id, license.id],
-		},
-		{
-			sql: "INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)",
-			args: [license.id, robloxUser.id, robloxUser.name, nowIso()],
-		},
-	]);
+// Link a Roblox account to a license even if it's already on other licenses (admins only).
+// It stays on those too, so the account works with every key it's linked to.
+// Gives back the names of the other licenses it's also on.
+async function linkShared(license, robloxUser) {
+	const others = (await getAllByRoblox(robloxUser.id)).filter((other) => other.id !== license.id);
 
-	return movedFrom;
+	try {
+		await db.run("INSERT INTO roblox_accounts (license_id, roblox_user_id, roblox_username, linked_at) VALUES (?, ?, ?, ?)", [
+			license.id,
+			robloxUser.id,
+			robloxUser.name,
+			nowIso(),
+		]);
+	} catch (err) {
+		if (db.isUniqueError(err)) throw new HttpError(400, `${robloxUser.name} is already linked to this license.`);
+		throw err;
+	}
+
+	return others.map((other) => other.discord_username || other.discord_id);
 }
 
 async function linkRobloxAccount(discordId, robloxUser, { admin = false } = {}) {
@@ -347,9 +357,9 @@ async function linkRobloxAccount(discordId, robloxUser, { admin = false } = {}) 
 		);
 	}
 
-	// Admins can link an account that's on someone else's license: it moves to theirs.
+	// Admins can link an account that's already on other licenses: it's shared, not moved.
 	if (admin) {
-		await linkMovingFromOtherLicense(license, robloxUser);
+		await linkShared(license, robloxUser);
 		return getByDiscord(discordId);
 	}
 
@@ -500,10 +510,10 @@ async function addAccount(id, robloxUser) {
 		throw new HttpError(400, `${robloxUser.name} is already linked to this license.`);
 	}
 
-	// Already on another license? Move it here (admins only reach this).
-	const movedFrom = await linkMovingFromOtherLicense(license, robloxUser);
+	// Already on other licenses? It stays there too (admins only reach this).
+	const alsoOn = await linkShared(license, robloxUser);
 
-	return { ...forAdmin(await getById(license.id)), movedFrom };
+	return { ...forAdmin(await getById(license.id)), alsoOn };
 }
 
 // Unlink one Roblox account from a license (admin, no waiting).
@@ -532,9 +542,10 @@ async function deleteLicense(id) {
 // ---------------------------------------------------------------------------
 
 async function check(robloxUserId) {
-	const license = await getByRoblox(robloxUserId);
+	// An account can be on several licenses (admins): allowed if any of them is active.
+	const license = (await getAllByRoblox(robloxUserId)).find(isAllowed);
 
-	if (!license || !isAllowed(license)) {
+	if (!license) {
 		return { allowed: false };
 	}
 
@@ -700,13 +711,23 @@ async function scriptKeyFor(discordId) {
 async function publicList() {
 	const rows = await withAccounts(await db.query("SELECT * FROM licenses"));
 
-	return rows.flatMap((license) =>
-		license.accounts.map((account) => ({
-			robloxUserId: account.roblox_user_id,
-			robloxUsername: account.roblox_username,
-			revoked: !isAllowed(license),
-		}))
-	);
+	// One entry per Roblox account; it's allowed if any license it's on is active.
+	const byAccount = new Map();
+
+	for (const license of rows) {
+		for (const account of license.accounts) {
+			const entry = byAccount.get(account.roblox_user_id) || {
+				robloxUserId: account.roblox_user_id,
+				robloxUsername: account.roblox_username,
+				revoked: true,
+			};
+
+			if (isAllowed(license)) entry.revoked = false;
+			byAccount.set(account.roblox_user_id, entry);
+		}
+	}
+
+	return [...byAccount.values()];
 }
 
 // ---------------------------------------------------------------------------

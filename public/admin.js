@@ -513,15 +513,15 @@ $("licenseRows").addEventListener("click", async (event) => {
 		if (button.dataset.action === "add-account") {
 			const name = license.discordUsername || license.discordId;
 			const username = prompt(
-				`Roblox username to link to ${name}'s license?\n\nIt's linked straight away: no profile phrase, and no account limit. If it's on another license, it moves here.`,
+				`Roblox username to link to ${name}'s license?\n\nIt's linked straight away: no profile phrase, and no account limit. If it's on other licenses too, it stays on them.`,
 				""
 			);
 			if (!username || !username.trim()) return;
 
 			const result = await api("POST", `/api/admin/licenses/${id}/roblox`, { username: username.trim() });
 			toast(
-				result.license && result.license.movedFrom
-					? `${username.trim()} linked (moved from ${result.license.movedFrom}'s license)`
+				result.license && result.license.alsoOn && result.license.alsoOn.length
+					? `${username.trim()} linked (also on ${result.license.alsoOn.join(", ")}'s license)`
 					: `${username.trim()} linked`
 			);
 		}
