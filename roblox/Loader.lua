@@ -660,33 +660,48 @@ local function prompt(savedKey)
 		end
 
 		setBusy(true)
-		setStatus("Checking your key...", COLORS.Muted)
+		setStatus("Loading Nya...", COLORS.Muted)
 
-		local allowed, message = checkKey(key, function(text)
-			setStatus(text, COLORS.Muted)
-		end)
+		-- Fast path: the download checks the key itself, so try it straight away (one request
+		-- instead of two). Only if that fails do we ask the site why (and wait for it to wake up).
+		local downloaded, problem = downloadScript(key)
 
 		if result ~= nil then
 			return
+		end
+
+		local allowed, message = true, nil
+
+		if not downloaded then
+			setStatus("Checking your key...", COLORS.Muted)
+
+			allowed, message = checkKey(key, function(text)
+				setStatus(text, COLORS.Muted)
+			end)
+
+			if result ~= nil then
+				return
+			end
+
+			if allowed then
+				setStatus("Key accepted. Downloading Nya...", COLORS.Success)
+				downloaded, problem = downloadScript(key)
+
+				if result ~= nil then
+					return
+				end
+			end
 		end
 
 		if allowed then
 			saveKey(key)
 			keyStroke.Color = COLORS.Success
 			checkButton.Text = "Loading..."
-			setStatus("Key accepted. Downloading Nya...", COLORS.Success)
-
-			local downloaded, problem = downloadScript(key)
-
-			if result ~= nil then
-				return
-			end
 
 			if downloaded then
 				source, goodKey = downloaded, key
 				windowStroke.Color = COLORS.Success
 				setStatus("Starting Nya...", COLORS.Success)
-				task.wait(0.4)
 				return finish(true)
 			end
 
