@@ -526,6 +526,24 @@ router.get("/api/admin/games", async (ctx) => {
 router.post(GAME_UPLOAD_PATH, async (ctx) => {
 	const admin = requireAdmin(ctx);
 
+	// Update button: a new version for a game that's already listed (keeps its name and place).
+	if (ctx.body.gameId !== undefined) {
+		const gameId = Number(ctx.body.gameId);
+		const existing = (await scripts.games.list()).find((game) => game.gameId === gameId);
+		if (!existing) throw new HttpError(404, "That game isn't listed. Add it with its link instead.");
+
+		const game = await scripts.games.upload({
+			gameId,
+			placeId: existing.placeId,
+			name: existing.name,
+			base64: ctx.body.base64,
+			fileName: ctx.body.fileName,
+			uploadedBy: admin.username,
+		});
+
+		return { game };
+	}
+
 	const placeId = placeIdFrom(ctx.body.game);
 	if (!placeId) throw new HttpError(400, "Paste the game's link (roblox.com/games/...) or its place ID.");
 
