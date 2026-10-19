@@ -260,6 +260,7 @@ function renderGames(games) {
 				game.uploadedBy ? `by ${game.uploadedBy}` : ""
 			)}</span></td>
 				<td class="actions">
+					<button class="btn btn-small" type="button" data-action="update-game">Update</button>
 					<a class="btn btn-quiet btn-small" href="/api/admin/games/${encodeURIComponent(game.gameId)}/download">Download</a>
 					<button class="btn btn-quiet btn-small" type="button" data-action="remove-game">Remove</button>
 				</td>
@@ -271,6 +272,55 @@ function renderGames(games) {
 async function loadGames() {
 	renderGames((await api("GET", "/api/admin/games")).games);
 }
+
+// Update: pick a new .lua for a game that's already listed.
+const gameUpdateFile = document.createElement("input");
+gameUpdateFile.type = "file";
+gameUpdateFile.accept = ".lua,.luau,.txt,text/plain";
+gameUpdateFile.hidden = true;
+gameUpdateFile.id = "gameUpdateFile";
+document.body.appendChild(gameUpdateFile);
+let gameUpdateRow = null;
+
+gameUpdateFile.addEventListener("change", () => {
+	const file = gameUpdateFile.files[0];
+	const row = gameUpdateRow;
+	gameUpdateFile.value = "";
+	if (!file || !row) return;
+
+	if (file.size > MAX_SCRIPT_BYTES) {
+		toast("That file is bigger than 15 MB.", true);
+		return;
+	}
+
+	const button = row.querySelector("button[data-action='update-game']");
+	busy(button, async () => {
+		const label = button.textContent;
+		button.textContent = "Uploading...";
+
+		try {
+			const result = await api("POST", "/api/admin/games", {
+				gameId: Number(row.dataset.gameId),
+				base64: await readAsBase64(file),
+				fileName: file.name,
+			});
+			toast(`${result.game.name} updated. Players there get it on their next load.`);
+			await loadGames();
+		} catch (err) {
+			toast(err.message, true);
+		} finally {
+			button.textContent = label;
+		}
+	});
+});
+
+$("gameRows").addEventListener("click", (event) => {
+	const update = event.target.closest("button[data-action='update-game']");
+	if (!update) return;
+
+	gameUpdateRow = update.closest("tr");
+	gameUpdateFile.click();
+});
 
 $("gameRows").addEventListener("click", async (event) => {
 	const button = event.target.closest("button[data-action='remove-game']");
