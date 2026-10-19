@@ -228,6 +228,47 @@
 				<button class="btn btn-quiet btn-small" type="button" id="copyLoader">Copy</button>
 			</div>
 			<p class="muted script-help">Players paste this into their executor. It's also on every player's license page, next to their key.</p>
+
+			<div class="toolbar">
+				<h2>Other games</h2>
+			</div>
+			<p class="muted script-help" style="margin-top: 0">
+				The same loader and the same Nya key work in other games too. The loader checks which game it's in and
+				loads that game's script (Deepwoken gets the main script above). Games without a script here tell the
+				player Nya doesn't support them yet.
+			</p>
+
+			<form class="admin-form upload" id="gameForm" novalidate>
+				<div>
+					<label for="gameLink">Game link or place ID</label>
+					<input id="gameLink" type="text" placeholder="https://www.roblox.com/games/123456789/..." autocomplete="off" />
+				</div>
+				<div>
+					<label for="gameName">Name (optional)</label>
+					<input id="gameName" type="text" maxlength="80" placeholder="Taken from Roblox if blank" autocomplete="off" />
+				</div>
+				<div>
+					<label for="gameFile">Script (.lua)</label>
+					<input id="gameFile" type="file" accept=".lua,.luau,.txt,text/plain" />
+				</div>
+				<button class="btn" type="submit" id="gameBtn">Upload</button>
+			</form>
+			<p class="form-error" id="gameError" role="alert"></p>
+			<p class="muted script-help">Uploading for a game that already has a script replaces it.</p>
+
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Game</th>
+							<th>Script</th>
+							<th>Uploaded</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody id="gameRows"></tbody>
+				</table>
+			</div>
 		</section>
 
 		<!-- Server Tracker -->
