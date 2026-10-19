@@ -23,6 +23,7 @@ const TRACKER_LOADER_FILE = path.join(__dirname, "roblox", "TrackerLoader.lua");
 // Script uploads go through the JSON body as base64, which is about 4/3 the file size.
 const UPLOAD_PATH = "/api/admin/script";
 const TRACKER_UPLOAD_PATH = "/api/admin/tracker/script";
+const GAME_UPLOAD_PATH = "/api/admin/games";
 const IMPORT_PATH = "/api/admin/keys/import";
 const TRACKER_IMPORT_PATH = "/api/admin/tracker/keys/import";
 const MAX_IMPORT_BODY = 256 * 1024;
@@ -70,6 +71,45 @@ function rateLimit(key, max, windowMs) {
 	hits.set(key, recent);
 
 	if (hits.size > 5000) hits.clear();
+}
+
+// Deepwoken's places, as the main script knows them (lobby, Etrean, Eastern, Depths, Chime...).
+// The site also looks up Deepwoken's game (universe) ID from the lobby, so any other Deepwoken
+// place (dungeons, new areas) counts too. DEEPWOKEN_GAME_ID can set it directly.
+const DEEPWOKEN_LOBBY_PLACE_ID = 4111023553;
+const DEEPWOKEN_PLACE_IDS = new Set([4111023553, 5735553160, 6032399813, 6473861193, 6832944305, 12559711136, 8668476218]);
+let deepwokenGameId = Number(process.env.DEEPWOKEN_GAME_ID) || null;
+
+async function findDeepwokenGameId() {
+	if (deepwokenGameId) return deepwokenGameId;
+	try {
+		deepwokenGameId = await roblox.universeForPlace(DEEPWOKEN_LOBBY_PLACE_ID);
+	} catch {
+		// Roblox unreachable: try again on the next request.
+	}
+	return deepwokenGameId;
+}
+
+// Which script a game gets: "main" (Deepwoken), a game script, or null (not supported).
+// Old loaders don't say what game they're in, so they always get the main script.
+async function scriptForGame(query) {
+	const gameId = Number(query.get("gameId"));
+	const placeId = Number(query.get("placeId"));
+	const hasGame = Number.isSafeInteger(gameId) && gameId > 0;
+
+	if (!hasGame) return { kind: "main" };
+	if (DEEPWOKEN_PLACE_IDS.has(placeId)) return { kind: "main" };
+
+	const dw = await findDeepwokenGameId();
+	if (dw && gameId === dw) return { kind: "main" };
+
+	const game = await scripts.games.current(gameId);
+	if (game) return { kind: "game", script: game };
+
+	// Couldn't reach Roblox to tell whether this is Deepwoken: don't lock Deepwoken players out.
+	if (!dw) return { kind: "main" };
+
+	return null;
 }
 
 // The site's own address, for links inside the loader.
@@ -467,6 +507,69 @@ router.get("/api/admin/script/download", async (ctx) => {
 	ctx.res.end(script.source);
 });
 
+// Scripts for other games. The same Nya key unlocks every game.
+
+// Pull a place ID out of a game link (roblox.com/games/123/...) or a plain number.
+function placeIdFrom(text) {
+	const value = String(text || "").trim();
+	const fromLink = value.match(/games\/(\d+)/i);
+	if (fromLink) return Number(fromLink[1]);
+	if (/^\d+$/.test(value)) return Number(value);
+	return null;
+}
+
+router.get("/api/admin/games", async (ctx) => {
+	requireAdmin(ctx);
+	return { games: await scripts.games.list() };
+});
+
+router.post(GAME_UPLOAD_PATH, async (ctx) => {
+	const admin = requireAdmin(ctx);
+
+	const placeId = placeIdFrom(ctx.body.game);
+	if (!placeId) throw new HttpError(400, "Paste the game's link (roblox.com/games/...) or its place ID.");
+
+	const gameId = await roblox.universeForPlace(placeId);
+	if (deepwokenGameId && gameId === deepwokenGameId) {
+		throw new HttpError(400, "That's Deepwoken. Upload Deepwoken's script with the main upload above.");
+	}
+
+	const name = String(ctx.body.name || "").trim() || (await roblox.gameName(gameId)) || `Game ${gameId}`;
+
+	const game = await scripts.games.upload({
+		gameId,
+		placeId,
+		name,
+		base64: ctx.body.base64,
+		fileName: ctx.body.fileName,
+		uploadedBy: admin.username,
+	});
+
+	return { game };
+});
+
+router.delete("/api/admin/games/:gameId", async (ctx) => {
+	requireAdmin(ctx);
+	await scripts.games.remove(Number(ctx.params.gameId));
+	return { ok: true };
+});
+
+router.get("/api/admin/games/:gameId/download", async (ctx) => {
+	requireAdmin(ctx);
+
+	const script = await scripts.games.current(Number(ctx.params.gameId));
+	if (!script) throw new HttpError(404, "That game has no script.");
+
+	const fileName = (script.info.fileName || `${script.info.name}.lua`).replace(/[^\w.\- ]/g, "_");
+
+	ctx.res.writeHead(200, {
+		"Content-Type": "text/plain; charset=utf-8",
+		"Content-Disposition": `attachment; filename="${fileName}"`,
+		"Cache-Control": "no-store",
+	});
+	ctx.res.end(script.source);
+});
+
 // Server Tracker: its keys and its script.
 router.get("/api/admin/tracker", async (ctx) => {
 	requireAdmin(ctx);
@@ -589,7 +692,12 @@ router.get("/api/script", async (ctx) => {
 		return sendJson(ctx.res, 403, { error: result.message, reason: result.reason });
 	}
 
-	const script = await scripts.current();
+	const pick = await scriptForGame(ctx.query);
+	if (!pick) {
+		return sendJson(ctx.res, 404, { error: "Nya doesn't support this game yet.", reason: "unsupported_game" });
+	}
+
+	const script = pick.kind === "game" ? pick.script : await scripts.current();
 	if (!script) throw new HttpError(503, "The script hasn't been uploaded yet. Try again later.");
 
 	presence.seen(robloxUserId);
@@ -678,7 +786,10 @@ async function handle(req, res) {
 		let maxBody;
 
 		// Script uploads are big, so only read one from an admin.
-		if (req.method === "POST" && (url.pathname === UPLOAD_PATH || url.pathname === TRACKER_UPLOAD_PATH)) {
+		if (
+			req.method === "POST" &&
+			(url.pathname === UPLOAD_PATH || url.pathname === TRACKER_UPLOAD_PATH || url.pathname === GAME_UPLOAD_PATH)
+		) {
 			if (!isAdmin(sessionData.user)) {
 				throw new HttpError(sessionData.user ? 403 : 401, "Only admins can do that.");
 			}
@@ -732,6 +843,9 @@ db.init()
 		http.createServer(handle).listen(config.port, () => {
 			console.log(`${config.siteName} license server listening on port ${config.port}`);
 		});
+
+		// Learn Deepwoken's game ID in the background so the first load doesn't wait for it.
+		findDeepwokenGameId();
 	})
 	.catch((err) => {
 		console.error("Could not connect to the database. Check TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.");

@@ -127,11 +127,14 @@ end
 ---@return string? source
 ---@return string? problem
 local function downloadScript(key)
+	-- Say which game we're in: the site sends that game's script (Deepwoken gets the main one).
 	local url = string.format(
-		"%s/api/script?key=%s&robloxUserId=%d",
+		"%s/api/script?key=%s&robloxUserId=%d&gameId=%d&placeId=%d",
 		SITE_URL,
 		HttpService:UrlEncode(key),
-		Players.LocalPlayer.UserId
+		Players.LocalPlayer.UserId,
+		game.GameId,
+		game.PlaceId
 	)
 
 	local status, body = httpGet(url)
@@ -139,8 +142,9 @@ local function downloadScript(key)
 	if status ~= 200 or type(body) ~= "string" or body == "" then
 		local ok, data = pcall(HttpService.JSONDecode, HttpService, body or "")
 		local message = ok and type(data) == "table" and data.error
+		local reason = ok and type(data) == "table" and data.reason or nil
 
-		return nil, message and tostring(message) or ("Couldn't download the script (" .. tostring(status or body) .. ").")
+		return nil, message and tostring(message) or ("Couldn't download the script (" .. tostring(status or body) .. ")."), reason
 	end
 
 	-- Some executors ask for a zipped download but can't unzip it.
@@ -664,9 +668,18 @@ local function prompt(savedKey)
 
 		-- Fast path: the download checks the key itself, so try it straight away (one request
 		-- instead of two). Only if that fails do we ask the site why (and wait for it to wake up).
-		local downloaded, problem = downloadScript(key)
+		local downloaded, problem, problemReason = downloadScript(key)
 
 		if result ~= nil then
+			return
+		end
+
+		-- The key is fine, this game just isn't supported: say so (no point re-checking the key).
+		if problemReason == "unsupported_game" then
+			saveKey(key)
+			setBusy(false)
+			setStatus(problem, COLORS.Error)
+			task.spawn(shake)
 			return
 		end
 

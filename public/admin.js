@@ -62,6 +62,7 @@ function showTab(name) {
 			$("scriptState").textContent = "Couldn't load";
 			$("scriptMeta").textContent = err.message;
 		});
+		loadGames().catch((err) => toast(err.message, true));
 	}
 
 	if (name === "tracker") {
@@ -236,6 +237,104 @@ $("scriptForm").addEventListener("submit", (event) => {
 });
 
 $("copyLoader").addEventListener("click", () => copyText($("loaderLine").textContent, $("copyLoader")));
+
+// ---------------------------------------------------------------------------
+// Other games (same key, a script per game)
+// ---------------------------------------------------------------------------
+
+function renderGames(games) {
+	if (!games.length) {
+		$("gameRows").innerHTML = `<tr><td colspan="4" class="muted">No other games yet. Only Deepwoken loads.</td></tr>`;
+		return;
+	}
+
+	$("gameRows").innerHTML = games
+		.map(
+			(game) => `
+			<tr data-game-id="${escapeHtml(game.gameId)}" data-name="${escapeHtml(game.name)}">
+				<td data-label="Game">${escapeHtml(game.name)}<span class="sub code">game ${escapeHtml(game.gameId)}${
+				game.placeId ? ` · place ${escapeHtml(game.placeId)}` : ""
+			}</span></td>
+				<td data-label="Script">${escapeHtml(game.fileName || "script.lua")}<span class="sub">${escapeHtml(formatBytes(game.size))}</span></td>
+				<td data-label="Uploaded">${escapeHtml(formatDate(game.uploadedAt))}<span class="sub">${escapeHtml(
+				game.uploadedBy ? `by ${game.uploadedBy}` : ""
+			)}</span></td>
+				<td class="actions">
+					<a class="btn btn-quiet btn-small" href="/api/admin/games/${encodeURIComponent(game.gameId)}/download">Download</a>
+					<button class="btn btn-quiet btn-small" type="button" data-action="remove-game">Remove</button>
+				</td>
+			</tr>`
+		)
+		.join("");
+}
+
+async function loadGames() {
+	renderGames((await api("GET", "/api/admin/games")).games);
+}
+
+$("gameRows").addEventListener("click", async (event) => {
+	const button = event.target.closest("button[data-action='remove-game']");
+	if (!button) return;
+
+	const row = button.closest("tr");
+	if (!confirm(`Remove the script for ${row.dataset.name}? Players there will get "not supported" until you upload one again.`)) return;
+
+	busy(button, async () => {
+		try {
+			await api("DELETE", `/api/admin/games/${encodeURIComponent(row.dataset.gameId)}`);
+			toast(`Removed ${row.dataset.name}.`);
+			await loadGames();
+		} catch (err) {
+			toast(err.message, true);
+		}
+	});
+});
+
+$("gameForm").addEventListener("submit", (event) => {
+	event.preventDefault();
+	$("gameError").textContent = "";
+
+	const link = $("gameLink").value.trim();
+	const file = $("gameFile").files[0];
+
+	if (!link) {
+		$("gameError").textContent = "Paste the game's link or place ID.";
+		return;
+	}
+
+	if (!file) {
+		$("gameError").textContent = "Choose a .lua file first.";
+		return;
+	}
+
+	if (file.size > MAX_SCRIPT_BYTES) {
+		$("gameError").textContent = "That file is bigger than 15 MB.";
+		return;
+	}
+
+	busy($("gameBtn"), async () => {
+		const label = $("gameBtn").textContent;
+		$("gameBtn").textContent = "Uploading...";
+
+		try {
+			const result = await api("POST", "/api/admin/games", {
+				game: link,
+				name: $("gameName").value.trim(),
+				base64: await readAsBase64(file),
+				fileName: file.name,
+			});
+			$("gameLink").value = "";
+			$("gameName").value = "";
+			$("gameFile").value = "";
+			toast(`${result.game.name} is live. Players there get it on their next load.`);
+			await loadGames();
+		} catch (err) {
+			$("gameError").textContent = err.message;
+		} finally {
+			$("gameBtn").textContent = label;
+		}
+	});
+});
 
 // ---------------------------------------------------------------------------
 // Keys

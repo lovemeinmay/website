@@ -198,6 +198,31 @@ async function init() {
 			sql: "CREATE INDEX IF NOT EXISTS tracker_keys_by_roblox ON tracker_keys (roblox_user_id)",
 			args: [],
 		},
+		{
+			// Scripts for games other than Deepwoken, one per Roblox game (universe). Same Nya key.
+			sql: `CREATE TABLE IF NOT EXISTS game_scripts (
+				game_id INTEGER PRIMARY KEY,
+				name TEXT NOT NULL,
+				place_id INTEGER,
+				version INTEGER NOT NULL,
+				size INTEGER NOT NULL,
+				sha256 TEXT NOT NULL,
+				file_name TEXT,
+				uploaded_at TEXT NOT NULL,
+				uploaded_by TEXT
+			)`,
+			args: [],
+		},
+		{
+			sql: `CREATE TABLE IF NOT EXISTS game_script_chunks (
+				game_id INTEGER NOT NULL,
+				version INTEGER NOT NULL,
+				idx INTEGER NOT NULL,
+				data BLOB NOT NULL,
+				PRIMARY KEY (game_id, version, idx)
+			)`,
+			args: [],
+		},
 	]);
 
 	// Databases made when a Roblox account could only be on one license: rebuild the table

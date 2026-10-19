@@ -52,4 +52,48 @@ async function usernameFor(userId) {
 	}
 }
 
-module.exports = { findByUsername, usernameFor };
+// Which game (universe) a place belongs to. A game can have many places (lobby, worlds,
+// dungeons...), so scripts are matched by the game, not the place. Cached for the process.
+const universeCache = new Map();
+
+async function universeForPlace(placeId) {
+	const id = Number(placeId);
+	if (!Number.isSafeInteger(id) || id <= 0) {
+		throw new HttpError(400, "That isn't a Roblox place ID.");
+	}
+
+	if (universeCache.has(id)) return universeCache.get(id);
+
+	const response = await robloxFetch(`https://apis.roblox.com/universes/v1/places/${id}/universe`);
+	if (response.status === 404 || response.status === 400) {
+		throw new HttpError(404, "Roblox doesn't know that game. Check the link.");
+	}
+	if (!response.ok) throw new HttpError(502, "Roblox lookup failed. Try again in a moment.");
+
+	const data = await response.json();
+	const universeId = Number(data && data.universeId);
+	if (!Number.isSafeInteger(universeId) || universeId <= 0) {
+		throw new HttpError(404, "Roblox doesn't know that game. Check the link.");
+	}
+
+	universeCache.set(id, universeId);
+	return universeId;
+}
+
+// The game's name on Roblox. Best effort: null if Roblox can't be reached.
+async function gameName(universeId) {
+	try {
+		const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${Number(universeId)}`, {
+			signal: AbortSignal.timeout(5000),
+		});
+		if (!response.ok) return null;
+
+		const data = await response.json();
+		const game = data && data.data && data.data[0];
+		return game && typeof game.name === "string" ? game.name : null;
+	} catch {
+		return null;
+	}
+}
+
+module.exports = { findByUsername, usernameFor, universeForPlace, gameName };
